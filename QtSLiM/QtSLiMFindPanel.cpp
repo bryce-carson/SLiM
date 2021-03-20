@@ -183,6 +183,10 @@ void QtSLiMFindPanel::showFindPanel(void)
     show();
     raise();
     activateWindow();
+    
+    // When the find panel is raised, it is conventional to select the find text so the user can immediately type to replace it
+    ui->findTextLineEdit->selectAll();
+    ui->findTextLineEdit->setFocus();
 }
 
 void QtSLiMFindPanel::closeEvent(QCloseEvent *p_event)
@@ -231,7 +235,11 @@ bool QtSLiMFindPanel::findForwardWrapBeep(QPlainTextEdit *target, bool forward, 
     
     bool findResult = target->find(findString, findFlags);
     
-    if (!findResult && wrap)
+    if (findResult)
+    {
+        target->centerCursor();
+    }
+    else if (wrap)
     {
         // If we're wrapping around, do the wrap and try again
         QTextCursor originalCursor(target->textCursor());
@@ -243,7 +251,9 @@ bool QtSLiMFindPanel::findForwardWrapBeep(QPlainTextEdit *target, bool forward, 
         
         findResult = target->find(findString, findFlags);
         
-        if (!findResult)
+        if (findResult)
+            target->centerCursor();
+        else
             target->setTextCursor(originalCursor);
     }
     
@@ -389,22 +399,7 @@ void QtSLiMFindPanel::jumpToSelection(void)
     ui->statusText->clear();
     
     QPlainTextEdit *target = targetTextEditRequireModifiable(false);
-    
-    // ensureCursorVisible() doesn't do a good job with full-line selections, so we temporarily change the selection
-    QTextCursor savedCursor(target->textCursor());
-    QTextCursor positionCursor(savedCursor);
-    QTextCursor anchorCursor(savedCursor);
-    
-    positionCursor.setPosition(savedCursor.position());
-    anchorCursor.setPosition(savedCursor.anchor());
-    
-    target->setTextCursor(positionCursor);
-    target->ensureCursorVisible();
-    target->setTextCursor(anchorCursor);
-    target->ensureCursorVisible();
-    
-    // restore the user's selection
-    target->setTextCursor(savedCursor);
+    target->centerCursor();
 }
 
 void QtSLiMFindPanel::jumpToLine(void)
@@ -430,7 +425,7 @@ void QtSLiMFindPanel::jumpToLine(void)
         lineCursor.movePosition(QTextCursor::NextBlock, QTextCursor::MoveAnchor, lineIndex - 1);
         
         target->setTextCursor(lineCursor);
-        target->ensureCursorVisible();
+        target->centerCursor();
     }
 }
 

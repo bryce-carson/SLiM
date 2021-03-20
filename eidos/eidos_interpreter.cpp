@@ -109,8 +109,8 @@ bool TypeCheckAssignmentOfEidosValueIntoEidosValue(const EidosValue &p_base_valu
 #pragma mark EidosInterpreter
 #pragma mark -
 
-EidosInterpreter::EidosInterpreter(const EidosScript &p_script, EidosSymbolTable &p_symbols, EidosFunctionMap &p_functions, EidosContext *p_eidos_context)
-	: eidos_context_(p_eidos_context), root_node_(p_script.AST()), global_symbols_(&p_symbols), function_map_(p_functions)
+EidosInterpreter::EidosInterpreter(const EidosScript &p_script, EidosSymbolTable &p_symbols, EidosFunctionMap &p_functions, EidosContext *p_eidos_context, std::ostream &p_outstream, std::ostream &p_errstream)
+	: eidos_context_(p_eidos_context), root_node_(p_script.AST()), global_symbols_(&p_symbols), function_map_(p_functions), execution_output_(p_outstream), error_output_(p_errstream)
 {
 	// Initialize the random number generator if and only if it has not already been initialized.  In some cases the Context will want to
 	// initialize the RNG itself, with its own seed; we don't want to override that.
@@ -127,8 +127,8 @@ EidosInterpreter::EidosInterpreter(const EidosScript &p_script, EidosSymbolTable
 #endif
 }
 
-EidosInterpreter::EidosInterpreter(const EidosASTNode *p_root_node_, EidosSymbolTable &p_symbols, EidosFunctionMap &p_functions, EidosContext *p_eidos_context)
-	: eidos_context_(p_eidos_context), root_node_(p_root_node_), global_symbols_(&p_symbols), function_map_(p_functions)
+EidosInterpreter::EidosInterpreter(const EidosASTNode *p_root_node_, EidosSymbolTable &p_symbols, EidosFunctionMap &p_functions, EidosContext *p_eidos_context, std::ostream &p_outstream, std::ostream &p_errstream)
+	: eidos_context_(p_eidos_context), root_node_(p_root_node_), global_symbols_(&p_symbols), function_map_(p_functions), execution_output_(p_outstream), error_output_(p_errstream)
 {
 	// Initialize the random number generator if and only if it has not already been initialized.  In some cases the Context will want to
 	// initialize the RNG itself, with its own seed; we don't want to override that.
@@ -170,32 +170,6 @@ bool EidosInterpreter::ShouldLogExecution(void)
 std::string EidosInterpreter::ExecutionLog(void)
 {
 	return (execution_log_ ? execution_log_->str() : gEidosStr_empty_string);
-}
-
-std::ostream &EidosInterpreter::ExecutionOutputStream(void)
-{
-	// lazy allocation; all use of execution_output_ should get it through this accessor
-	// also, when running at the command line we send output directly to std::cout to avoid buffering issues on termination
-	if (!gEidosTerminateThrows)
-		return std::cout;
-	
-	if (!execution_output_)
-		execution_output_ = new std::ostringstream();
-	
-	return *execution_output_;
-}
-
-std::ostream &EidosInterpreter::ErrorOutputStream(void)
-{
-	// lazy allocation; all use of error_output_ should get it through this accessor
-	// also, when running at the command line we send output directly to std::cerr to avoid buffering issues on termination
-	if (!gEidosTerminateThrows)
-		return std::cerr;
-	
-	if (!error_output_)
-		error_output_ = new std::ostringstream();
-	
-	return *error_output_;
 }
 
 // the starting point for internally executed blocks, which require braces and suppress output
@@ -882,7 +856,7 @@ EidosValue_SP EidosInterpreter::Evaluate_NullStatement(const EidosASTNode *p_nod
 	if (debug_points_ && debug_points_->set.size() && (p_node->token_->token_line_ != -1) &&
 		(debug_points_->set.find(p_node->token_->token_line_) != debug_points_->set.end()))
 	{
-		ErrorOutputStream() << "#DEBUG NULL_STATEMENT (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << ")" << std::endl;
+		ErrorOutputStream() << EidosDebugPointIndent::Indent() << "#DEBUG NULL_STATEMENT (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << ")" << std::endl;
 	}
 #endif
 	
@@ -1303,19 +1277,25 @@ EidosValue_SP EidosInterpreter::DispatchUserDefinedFunction(const EidosFunctionS
 {
 #if DEBUG_POINTS_ENABLED
 	// SLiMgui debugging point
+	EidosDebugPointIndent indenter;
+	
 	if (debug_points_ && debug_points_->set.size() && (p_function_signature.user_definition_line_ != -1) &&
 		(debug_points_->set.find(p_function_signature.user_definition_line_) != debug_points_->set.end()))
 	{
 		std::ostream &output_stream = ErrorOutputStream();
 		
-		output_stream << "#DEBUG FUNCTION (line " << (p_function_signature.user_definition_line_ + 1) << eidos_context_->DebugPointInfo() << "): function " << p_function_signature.call_name_ << "() called with arguments:" << std::endl;
+		output_stream << EidosDebugPointIndent::Indent() << "#DEBUG FUNCTION (line " << (p_function_signature.user_definition_line_ + 1) << eidos_context_->DebugPointInfo() << "): function " << p_function_signature.call_name_ << "() called with arguments:" << std::endl;
+		
+		indenter.indent(2);
 		
 		for (size_t arg_index = 0; arg_index < p_arguments.size(); ++arg_index)
 		{
-			output_stream << "    " << p_function_signature.arg_names_[arg_index] << " == ";
+			output_stream << EidosDebugPointIndent::Indent() << p_function_signature.arg_names_[arg_index] << " == ";
 			p_arguments[arg_index]->PrintStructure(output_stream, 5);
 			output_stream << std::endl;
 		}
+		
+		indenter.indent(2);
 	}
 #endif
 	
@@ -1344,16 +1324,12 @@ EidosValue_SP EidosInterpreter::DispatchUserDefinedFunction(const EidosFunctionS
 	
 	try
 	{
-		EidosInterpreter interpreter(*p_function_signature.body_script_, new_symbols, function_map_, Context());
+		EidosInterpreter interpreter(*p_function_signature.body_script_, new_symbols, function_map_, Context(), execution_output_, error_output_);
 		
 		// Get the result.  BEWARE!  This calls causes re-entry into the Eidos interpreter, which is not usually
 		// possible since Eidos does not support multithreaded usage.  This is therefore a key failure point for
 		// bugs that would otherwise not manifest.
 		result_SP = interpreter.EvaluateInterpreterBlock(false, false);	// don't print output, don't return last statement value
-		
-		// Assimilate output
-		interpreter.FlushExecutionOutputToStream(ExecutionOutputStream());
-		interpreter.FlushErrorOutputToStream(ErrorOutputStream());
 	}
 	catch (...)
 	{
@@ -1383,7 +1359,7 @@ void EidosInterpreter::_LogCallArguments(const EidosCallSignature *call_signatur
 	// log out arguments with positional numbers
 	for (size_t argument_index = 0; argument_index < argument_buffer->size(); ++argument_index)
 	{
-		output_stream << "    [" << argument_index << "] == ";
+		output_stream << EidosDebugPointIndent::Indent() << "[" << argument_index << "] == ";
 		(*argument_buffer)[argument_index]->PrintStructure(output_stream, 5);
 		output_stream << std::endl;
 	}
@@ -1422,7 +1398,7 @@ void EidosInterpreter::_LogCallArguments(const EidosCallSignature *call_signatur
 		else
 			signature_arg_index = buffer_arg_index - ellipsis_arg_count + 1;	// + 1 because the ellipsis gets one entry in the sig
 		
-		output_stream << "    " << call_signature->arg_names_[signature_arg_index] << " == ";
+		output_stream << EidosDebugPointIndent::Indent() << call_signature->arg_names_[signature_arg_index] << " == ";
 		(*argument_buffer)[buffer_arg_index]->PrintStructure(output_stream, 5);
 		output_stream << std::endl;
 	}
@@ -1463,7 +1439,12 @@ EidosValue_SP EidosInterpreter::Evaluate_Call(const EidosASTNode *p_node)
 			auto signature_iter = function_map_.find(*function_name);
 			
 			if (signature_iter == function_map_.end())
-				EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Call): unrecognized function name " << *function_name << "." << EidosTerminate(call_identifier_token);
+			{
+				EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Call): unrecognized function name " << *function_name << ".";
+				if (Context() == nullptr)
+					EIDOS_TERMINATION << "  This may be because the current Eidos context (such as the current SLiM simulation) is invalid.";
+				EIDOS_TERMINATION << EidosTerminate(call_identifier_token);
+			}
 			
 			function_signature = signature_iter->second.get();
 		}
@@ -1476,14 +1457,18 @@ EidosValue_SP EidosInterpreter::Evaluate_Call(const EidosASTNode *p_node)
 		
 #if DEBUG_POINTS_ENABLED
 		// SLiMgui debugging point
+		EidosDebugPointIndent indenter;
+		
 		if (debug_points_ && debug_points_->set.size() && (call_identifier_token->token_line_ != -1) &&
 			(debug_points_->set.find(call_identifier_token->token_line_) != debug_points_->set.end()))
 		{
 			std::ostream &output_stream = ErrorOutputStream();
 			
-			output_stream << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): call to function " <<
-				*function_name << "() arguments:" << std::endl;
+			output_stream << EidosDebugPointIndent::Indent() << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): call to function " <<
+				*function_name << "() with arguments:" << std::endl;
+			indenter.indent(2);
 			_LogCallArguments(function_signature, argument_buffer);
+			indenter.indent(2);
 		}
 #endif
 		
@@ -1520,11 +1505,21 @@ EidosValue_SP EidosInterpreter::Evaluate_Call(const EidosASTNode *p_node)
 		{
 			std::ostream &output_stream = ErrorOutputStream();
 			
-			output_stream << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): function " <<
+			indenter.outdent();
+			output_stream << EidosDebugPointIndent::Indent() << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): function " <<
 				*function_name << "() return: ";
-			result_SP->PrintStructure(output_stream, 0);
-			if (result_SP->Count() > 0)
-				output_stream << std::endl << *result_SP;		// std::endl so that matrices and such print nicely
+			if (result_SP->Count() <= 1)
+			{
+				result_SP->PrintStructure(output_stream, 1);
+			}
+			else {
+				// print multiple values on a new line, with indent
+				result_SP->PrintStructure(output_stream, 0);
+				output_stream << std::endl;
+				indenter.indent(2);
+				result_SP->Print(output_stream, EidosDebugPointIndent::Indent());
+				indenter.outdent(2);
+			}
 			output_stream << std::endl;
 		}
 #endif
@@ -1581,14 +1576,18 @@ EidosValue_SP EidosInterpreter::Evaluate_Call(const EidosASTNode *p_node)
 		
 #if DEBUG_POINTS_ENABLED
 		// SLiMgui debugging point
+		EidosDebugPointIndent indenter;
+		
 		if (debug_points_ && debug_points_->set.size() && (call_identifier_token->token_line_ != -1) &&
 			(debug_points_->set.find(call_identifier_token->token_line_) != debug_points_->set.end()))
 		{
 			std::ostream &output_stream = ErrorOutputStream();
 			
-			output_stream << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): call to method " <<
-				EidosStringRegistry::StringForGlobalStringID(method_id) << "() arguments:" << std::endl;
+			output_stream << EidosDebugPointIndent::Indent() << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): call to method " <<
+				EidosStringRegistry::StringForGlobalStringID(method_id) << "() with arguments:" << std::endl;
+			indenter.indent(2);
 			_LogCallArguments(method_signature, argument_buffer);
+			indenter.indent(2);
 		}
 #endif
 		
@@ -1615,11 +1614,21 @@ EidosValue_SP EidosInterpreter::Evaluate_Call(const EidosASTNode *p_node)
 		{
 			std::ostream &output_stream = ErrorOutputStream();
 			
-			output_stream << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): method " <<
+			indenter.outdent();
+			output_stream << EidosDebugPointIndent::Indent() << "#DEBUG CALL (line " << (call_identifier_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): method " <<
 				EidosStringRegistry::StringForGlobalStringID(method_id) << "() return: ";
-			result_SP->PrintStructure(output_stream, 0);
-			if (result_SP->Count() > 0)
-				output_stream << std::endl << *result_SP;		// std::endl so that matrices and such print nicely
+			if (result_SP->Count() <= 1)
+			{
+				result_SP->PrintStructure(output_stream, 1);
+			}
+			else {
+				// print multiple values on a new line, with indent
+				result_SP->PrintStructure(output_stream, 0);
+				output_stream << std::endl;
+				indenter.indent(2);
+				result_SP->Print(output_stream, EidosDebugPointIndent::Indent());
+				indenter.outdent(2);
+			}
 			output_stream << std::endl;
 		}
 #endif
@@ -1724,335 +1733,8 @@ EidosValue_SP EidosInterpreter::Evaluate_Subset(const EidosASTNode *p_node)
 	{
 		// OK, we have a simple vector-style subset that is not NULL; handle it as we did in Eidos 1.5 and earlier
 		EidosValue_SP second_child_value = subset_indices[0];
-		EidosValueType second_child_type = second_child_value->Type();
 		
-		int first_child_count = first_child_value->Count();
-		int second_child_count = second_child_value->Count();
-		
-		if (second_child_type == EidosValueType::kValueLogical)
-		{
-			// Subsetting with a logical vector means the vectors must match in length; indices with a T value will be taken
-			if (first_child_count != second_child_count)
-				EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): the '[]' operator requires that the size() of a logical index operand must match the size() of the indexed operand." << EidosTerminate(operator_token);
-			
-			// Subsetting with a logical vector does not attempt to allocate singleton values, for now; seems unlikely to be a frequently hit case
-			const eidos_logical_t *logical_index_data = second_child_value->LogicalVector()->data();
-			
-			if (first_child_count == 1)
-			{
-				// This is the simple logic using NewMatchingType() / PushValueFromIndexOfEidosValue()
-				result_SP = first_child_value->NewMatchingType();
-				
-				EidosValue *result = result_SP.get();
-				
-				for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-					if (logical_index_data[value_idx])
-						result->PushValueFromIndexOfEidosValue(value_idx, *first_child_value, operator_token);
-			}
-			else
-			{
-				// Here we can special-case each type for speed since we know we're not dealing with singletons
-				if (first_child_type == EidosValueType::kValueLogical)
-				{
-					const eidos_logical_t *first_child_data = first_child_value->LogicalVector()->data();
-					EidosValue_Logical_SP logical_result_SP = EidosValue_Logical_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Logical());
-					EidosValue_Logical *logical_result = logical_result_SP->reserve(second_child_count);
-					
-					for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						if (logical_index_data[value_idx])
-							logical_result->push_logical_no_check(first_child_data[value_idx]);
-					
-					result_SP = std::move(logical_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueInt)
-				{
-					const int64_t *first_child_data = first_child_value->IntVector()->data();
-					EidosValue_Int_vector_SP int_result_SP = EidosValue_Int_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Int_vector());
-					EidosValue_Int_vector *int_result = int_result_SP->reserve(second_child_count);
-					
-					for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						if (logical_index_data[value_idx])
-							int_result->push_int_no_check(first_child_data[value_idx]);		// cannot use set_int_no_check() because of the if()
-					
-					result_SP = std::move(int_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueFloat)
-				{
-					const double *first_child_data = first_child_value->FloatVector()->data();
-					EidosValue_Float_vector_SP float_result_SP = EidosValue_Float_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Float_vector());
-					EidosValue_Float_vector *float_result = float_result_SP->reserve(second_child_count);
-					
-					for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						if (logical_index_data[value_idx])
-							float_result->push_float_no_check(first_child_data[value_idx]);	// cannot use set_int_no_check() because of the if()
-					
-					result_SP = std::move(float_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueString)
-				{
-					const std::vector<std::string> &first_child_vec = *first_child_value->StringVector();
-					EidosValue_String_vector_SP string_result_SP = EidosValue_String_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_String_vector());
-					EidosValue_String_vector *string_result = string_result_SP->Reserve(second_child_count);
-					
-					for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						if (logical_index_data[value_idx])
-							string_result->PushString(first_child_vec[value_idx]);
-					
-					result_SP = std::move(string_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueObject)
-				{
-					EidosObject * const *first_child_vec = first_child_value->ObjectElementVector()->data();
-					EidosValue_Object_vector_SP obj_result_SP = EidosValue_Object_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Object_vector(((EidosValue_Object *)first_child_value.get())->Class()));
-					EidosValue_Object_vector *obj_result = obj_result_SP->reserve(second_child_count);
-					
-					for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						if (logical_index_data[value_idx])
-							obj_result->push_object_element_no_check_CRR(first_child_vec[value_idx]);
-					
-					result_SP = std::move(obj_result_SP);
-				}
-			}
-		}
-		else
-		{
-			if (second_child_count == 1)
-			{
-				// Subsetting with a singleton int/float vector is common and should return a singleton value for speed
-				// This is guaranteed to return a singleton value (when available), and bounds-checks for us
-				result_SP = first_child_value->GetValueAtIndex((int)second_child_value->IntAtIndex(0, operator_token), operator_token);
-			}
-			else if (first_child_count == 1)
-			{
-				// We can't use direct access on first_child_value if it is a singleton, so this needs to be special-cased
-				// Note this is identical to the general-case code below that is never hit
-				result_SP = first_child_value->NewMatchingType();
-				
-				EidosValue *result = result_SP.get();
-				
-				for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-				{
-					int64_t index_value = second_child_value->IntAtIndex(value_idx, operator_token);
-					
-					if ((index_value < 0) || (index_value >= first_child_count))
-						EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-					else
-						result->PushValueFromIndexOfEidosValue((int)index_value, *first_child_value, operator_token);
-				}
-			}
-			else
-			{
-				// Subsetting with a int/float vector can use a vector of any length; the specific indices referenced will be taken
-				if (first_child_type == EidosValueType::kValueFloat)
-				{
-					// result type is float; optimize for that
-					const double *first_child_data = first_child_value->FloatVector()->data();
-					EidosValue_Float_vector_SP float_result_SP = EidosValue_Float_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Float_vector());
-					EidosValue_Float_vector *float_result = float_result_SP->resize_no_initialize(second_child_count);
-					
-					if (second_child_type == EidosValueType::kValueInt)
-					{
-						// integer indices; we can use fast access since we know second_child_count != 1
-						const int64_t *int_index_data = second_child_value->IntVector()->data();
-						
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = int_index_data[value_idx];
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								float_result->set_float_no_check(first_child_data[index_value], value_idx);
-						}
-					}
-					else
-					{
-						// float indices; we use IntAtIndex() since it has complex behavior
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = second_child_value->IntAtIndex(value_idx, operator_token);
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								float_result->set_float_no_check(first_child_data[index_value], value_idx);
-						}
-					}
-					
-					result_SP = std::move(float_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueInt)
-				{
-					// result type is integer; optimize for that
-					const int64_t *first_child_data = first_child_value->IntVector()->data();
-					EidosValue_Int_vector_SP int_result_SP = EidosValue_Int_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Int_vector());
-					EidosValue_Int_vector *int_result = int_result_SP->resize_no_initialize(second_child_count);
-					
-					if (second_child_type == EidosValueType::kValueInt)
-					{
-						// integer indices; we can use fast access since we know second_child_count != 1
-						const int64_t *int_index_data = second_child_value->IntVector()->data();
-						
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = int_index_data[value_idx];
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								int_result->set_int_no_check(first_child_data[index_value], value_idx);
-						}
-					}
-					else
-					{
-						// float indices; we use IntAtIndex() since it has complex behavior
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = second_child_value->IntAtIndex(value_idx, operator_token);
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								int_result->set_int_no_check(first_child_data[index_value], value_idx);
-						}
-					}
-					
-					result_SP = std::move(int_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueObject)
-				{
-					// result type is object; optimize for that
-					EidosObject * const *first_child_vec = first_child_value->ObjectElementVector()->data();
-					EidosValue_Object_vector_SP obj_result_SP = EidosValue_Object_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Object_vector(((EidosValue_Object *)first_child_value.get())->Class()));
-					EidosValue_Object_vector *obj_result = obj_result_SP->resize_no_initialize(second_child_count);
-					
-					if (second_child_type == EidosValueType::kValueInt)
-					{
-						// integer indices; we can use fast access since we know second_child_count != 1
-						const int64_t *int_index_data = second_child_value->IntVector()->data();
-						
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = int_index_data[value_idx];
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								obj_result->set_object_element_no_check_CRR(first_child_vec[index_value], value_idx);
-						}
-					}
-					else
-					{
-						// float indices; we use IntAtIndex() since it has complex behavior
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = second_child_value->IntAtIndex(value_idx, operator_token);
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								obj_result->set_object_element_no_check_CRR(first_child_vec[index_value], value_idx);
-						}
-					}
-					
-					result_SP = std::move(obj_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueLogical)
-				{
-					// result type is logical; optimize for that
-					const eidos_logical_t *first_child_data = first_child_value->LogicalVector()->data();
-					EidosValue_Logical_SP logical_result_SP = EidosValue_Logical_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_Logical());
-					EidosValue_Logical *logical_result = logical_result_SP->resize_no_initialize(second_child_count);
-					
-					if (second_child_type == EidosValueType::kValueInt)
-					{
-						// integer indices; we can use fast access since we know second_child_count != 1
-						const int64_t *int_index_data = second_child_value->IntVector()->data();
-						
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = int_index_data[value_idx];
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								logical_result->set_logical_no_check(first_child_data[index_value], value_idx);
-						}
-					}
-					else
-					{
-						// float indices; we use IntAtIndex() since it has complex behavior
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = second_child_value->IntAtIndex(value_idx, operator_token);
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								logical_result->set_logical_no_check(first_child_data[index_value], value_idx);
-						}
-					}
-					
-					result_SP = std::move(logical_result_SP);
-				}
-				else if (first_child_type == EidosValueType::kValueString)
-				{
-					// result type is string; optimize for that
-					const std::vector<std::string> &first_child_vec = *first_child_value->StringVector();
-					EidosValue_String_vector_SP string_result_SP = EidosValue_String_vector_SP(new (gEidosValuePool->AllocateChunk()) EidosValue_String_vector());
-					EidosValue_String_vector *string_result = string_result_SP->Reserve(second_child_count);
-					
-					if (second_child_type == EidosValueType::kValueInt)
-					{
-						// integer indices; we can use fast access since we know second_child_count != 1
-						const int64_t *int_index_data = second_child_value->IntVector()->data();
-						
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = int_index_data[value_idx];
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								string_result->PushString(first_child_vec[index_value]);
-						}
-					}
-					else
-					{
-						// float indices; we use IntAtIndex() since it has complex behavior
-						for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-						{
-							int64_t index_value = second_child_value->IntAtIndex(value_idx, operator_token);
-							
-							if ((index_value < 0) || (index_value >= first_child_count))
-								EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-							else
-								string_result->PushString(first_child_vec[index_value]);
-						}
-					}
-					
-					result_SP = std::move(string_result_SP);
-				}
-				else
-				{
-					// This is the general case; it should never be hit
-					// CODE COVERAGE: This is dead code
-					result_SP = first_child_value->NewMatchingType();
-					
-					EidosValue *result = result_SP.get();
-					
-					for (int value_idx = 0; value_idx < second_child_count; value_idx++)
-					{
-						int64_t index_value = second_child_value->IntAtIndex(value_idx, operator_token);
-						
-						if ((index_value < 0) || (index_value >= first_child_count))
-							EIDOS_TERMINATION << "ERROR (EidosInterpreter::Evaluate_Subset): out-of-range index " << index_value << " used with the '[]' operator." << EidosTerminate(operator_token);
-						else
-							result->PushValueFromIndexOfEidosValue((int)index_value, *first_child_value, operator_token);
-					}
-				}
-			}
-		}
+		result_SP = SubsetEidosValue(first_child_value.get(), second_child_value.get(), operator_token);
 	}
 	else
 	{
@@ -4269,17 +3951,28 @@ compoundAssignmentSkip:
 		
 #if DEBUG_POINTS_ENABLED
 		// SLiMgui debugging point
+		EidosDebugPointIndent indenter;
+		
 		if (debug_points_ && debug_points_->set.size() && (operator_token->token_line_ != -1) &&
 			(debug_points_->set.find(operator_token->token_line_) != debug_points_->set.end()))
 		{
 			std::ostream &output_stream = ErrorOutputStream();
 			
-			output_stream << "#DEBUG ASSIGN (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): ";
+			output_stream << EidosDebugPointIndent::Indent() << "#DEBUG ASSIGN (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): ";
 			if (lvalue_node->token_->token_type_ == EidosTokenType::kTokenIdentifier)
 				output_stream << lvalue_node->token_->token_string_ << " = ";
-			rvalue->PrintStructure(output_stream, 0);
-			if (rvalue->Count() > 0)
-				output_stream << std::endl << *rvalue;		// std::endl so that matrices and such print nicely
+			if (rvalue->Count() <= 1)
+			{
+				rvalue->PrintStructure(output_stream, 1);
+			}
+			else {
+				// print multiple values on a new line, with indent
+				rvalue->PrintStructure(output_stream, 0);
+				output_stream << std::endl;
+				indenter.indent(2);
+				rvalue->Print(output_stream, EidosDebugPointIndent::Indent());
+				indenter.outdent(2);
+			}
 			output_stream << std::endl;
 		}
 #endif
@@ -5550,6 +5243,8 @@ EidosValue_SP EidosInterpreter::Evaluate_If(const EidosASTNode *p_node)
 	
 #if DEBUG_POINTS_ENABLED
 	// SLiMgui debugging point
+	EidosDebugPointIndent indenter;
+	
 	if (debug_points_ && debug_points_->set.size() && (operator_token->token_line_ != -1) &&
 		(debug_points_->set.find(operator_token->token_line_) != debug_points_->set.end()) &&
 		(condition_result->Count() == 1))
@@ -5557,8 +5252,9 @@ EidosValue_SP EidosInterpreter::Evaluate_If(const EidosASTNode *p_node)
 		eidos_logical_t condition_logical = condition_result->LogicalAtIndex(0, operator_token);
 		
 		// the above might raise, but if it does, it will be the same error as produced below
-		ErrorOutputStream() << "#DEBUG IF (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): condition == " <<
+		ErrorOutputStream() << EidosDebugPointIndent::Indent() << "#DEBUG IF (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): condition == " <<
 			(condition_logical ? "T" : "F") << std::endl;
+		indenter.indent();
 	}
 #endif
 	
@@ -5661,6 +5357,18 @@ EidosValue_SP EidosInterpreter::Evaluate_Do(const EidosASTNode *p_node)
 	EidosToken *operator_token = p_node->token_;
 	EidosValue_SP result_SP;
 	
+#if DEBUG_POINTS_ENABLED
+	// SLiMgui debugging point
+	EidosDebugPointIndent indenter;
+	
+	if (debug_points_ && debug_points_->set.size() && (operator_token->token_line_ != -1) &&
+		(debug_points_->set.find(operator_token->token_line_) != debug_points_->set.end()))
+	{
+		ErrorOutputStream() << EidosDebugPointIndent::Indent() << "#DEBUG DO (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): entering loop" << std::endl;
+		indenter.indent();
+	}
+#endif
+	
 	do
 	{
 		// execute the do...while loop's statement by evaluating its node; evaluation values get thrown away
@@ -5708,8 +5416,10 @@ EidosValue_SP EidosInterpreter::Evaluate_Do(const EidosASTNode *p_node)
 			eidos_logical_t condition_logical = condition_result->LogicalAtIndex(0, operator_token);
 			
 			// the above might raise, but if it does, it will be the same error as produced below
-			ErrorOutputStream() << "#DEBUG DO (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): condition == " <<
+			indenter.outdent();
+			ErrorOutputStream() << EidosDebugPointIndent::Indent() << "#DEBUG DO (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): condition == " <<
 			(condition_logical ? "T" : "F") << std::endl;
+			indenter.indent();
 		}
 #endif
 		
@@ -5759,6 +5469,8 @@ EidosValue_SP EidosInterpreter::Evaluate_While(const EidosASTNode *p_node)
 		
 #if DEBUG_POINTS_ENABLED
 		// SLiMgui debugging point
+		EidosDebugPointIndent indenter;
+		
 		if (debug_points_ && debug_points_->set.size() && (operator_token->token_line_ != -1) &&
 			(debug_points_->set.find(operator_token->token_line_) != debug_points_->set.end()) &&
 			(condition_result->Count() == 1))
@@ -5766,8 +5478,9 @@ EidosValue_SP EidosInterpreter::Evaluate_While(const EidosASTNode *p_node)
 			eidos_logical_t condition_logical = condition_result->LogicalAtIndex(0, operator_token);
 			
 			// the above might raise, but if it does, it will be the same error as produced below
-			ErrorOutputStream() << "#DEBUG WHILE (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): condition == " <<
+			ErrorOutputStream() << EidosDebugPointIndent::Indent() << "#DEBUG WHILE (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): condition == " <<
 			(condition_logical ? "T" : "F") << std::endl;
+			indenter.indent();
 		}
 #endif
 		
@@ -6289,17 +6002,20 @@ EidosValue_SP EidosInterpreter::Evaluate_For(const EidosASTNode *p_node)
 					
 #if DEBUG_POINTS_ENABLED
 					// SLiMgui debugging point
+					EidosDebugPointIndent indenter;
+					
 					if (debug_points_ && debug_points_->set.size() && (operator_token->token_line_ != -1) &&
 						(debug_points_->set.find(operator_token->token_line_) != debug_points_->set.end()))
 					{
 						std::ostream &output_stream = ErrorOutputStream();
 						
-						output_stream << "#DEBUG FOR (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): " <<
+						output_stream << EidosDebugPointIndent::Indent() << "#DEBUG FOR (line " << (operator_token->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): " <<
 							identifier_child->token_->token_string_ << " = " <<
 							iteration_value->Type();
 						if (iteration_value->Type() == EidosValueType::kValueObject)
 							output_stream << "<" << iteration_value->ElementType() << ">";
 						output_stream << "$ " << *iteration_value << std::endl;
+						indenter.indent();
 					}
 #endif
 					
@@ -6366,7 +6082,7 @@ EidosValue_SP EidosInterpreter::Evaluate_Next(const EidosASTNode *p_node)
 	if (debug_points_ && debug_points_->set.size() && (p_node->token_->token_line_ != -1) &&
 		(debug_points_->set.find(p_node->token_->token_line_) != debug_points_->set.end()))
 	{
-		ErrorOutputStream() << "#DEBUG NEXT (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << ")" << std::endl;
+		ErrorOutputStream() << EidosDebugPointIndent::Indent() << "#DEBUG NEXT (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << ")" << std::endl;
 	}
 #endif
 	
@@ -6394,7 +6110,7 @@ EidosValue_SP EidosInterpreter::Evaluate_Break(const EidosASTNode *p_node)
 	if (debug_points_ && debug_points_->set.size() && (p_node->token_->token_line_ != -1) &&
 		(debug_points_->set.find(p_node->token_->token_line_) != debug_points_->set.end()))
 	{
-		ErrorOutputStream() << "#DEBUG BREAK (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << ")" << std::endl;
+		ErrorOutputStream() << EidosDebugPointIndent::Indent() << "#DEBUG BREAK (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << ")" << std::endl;
 	}
 #endif
 	
@@ -6435,15 +6151,26 @@ EidosValue_SP EidosInterpreter::Evaluate_Return(const EidosASTNode *p_node)
 	
 #if DEBUG_POINTS_ENABLED
 	// SLiMgui debugging point
+	EidosDebugPointIndent indenter;
+	
 	if (debug_points_ && debug_points_->set.size() && (p_node->token_->token_line_ != -1) &&
 		(debug_points_->set.find(p_node->token_->token_line_) != debug_points_->set.end()))
 	{
 		std::ostream &output_stream = ErrorOutputStream();
 		
-		output_stream << "#DEBUG RETURN (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): ";
-		result_SP->PrintStructure(output_stream, 0);
-		if (result_SP->Count() > 0)
-			output_stream << std::endl << *result_SP;		// std::endl so that matrices and such print nicely
+		output_stream << EidosDebugPointIndent::Indent() << "#DEBUG RETURN (line " << (p_node->token_->token_line_ + 1) << eidos_context_->DebugPointInfo() << "): ";
+		if (result_SP->Count() <= 1)
+		{
+			result_SP->PrintStructure(output_stream, 1);
+		}
+		else {
+			// print multiple values on a new line, with indent
+			result_SP->PrintStructure(output_stream, 0);
+			output_stream << std::endl;
+			indenter.indent(2);
+			result_SP->Print(output_stream, EidosDebugPointIndent::Indent());
+			indenter.outdent(2);
+		}
 		output_stream << std::endl;
 	}
 #endif

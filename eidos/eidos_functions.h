@@ -37,6 +37,7 @@ bool IdenticalEidosValues(EidosValue *x_value, EidosValue *y_value, bool p_compa
 EidosValue_SP ConcatenateEidosValues(const std::vector<EidosValue_SP> &p_arguments, bool p_allow_null, bool p_allow_void);
 EidosValue_SP UniqueEidosValue(const EidosValue *p_value, bool p_force_new_vector, bool p_preserve_order);
 EidosValue_SP Eidos_ExecuteLambdaInternal(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter, bool p_execute_in_outer_scope);
+EidosValue_SP SubsetEidosValue(const EidosValue *p_value, const EidosValue *p_indices, EidosToken *p_error_token);
 
 
 #pragma mark -
@@ -254,6 +255,7 @@ EidosValue_SP Eidos_ExecuteFunction_beep(const std::vector<EidosValue_SP> &p_arg
 EidosValue_SP Eidos_ExecuteFunction_citation(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter);
 EidosValue_SP Eidos_ExecuteFunction_clock(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter);
 EidosValue_SP Eidos_ExecuteFunction_date(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter);
+EidosValue_SP Eidos_ExecuteFunction_debugIndent(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter);
 EidosValue_SP Eidos_ExecuteFunction_defineConstant(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter);
 EidosValue_SP Eidos_ExecuteFunction_defineGlobal(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter);
 EidosValue_SP Eidos_ExecuteFunction_doCall(const std::vector<EidosValue_SP> &p_arguments, EidosInterpreter &p_interpreter);

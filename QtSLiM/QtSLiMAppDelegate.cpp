@@ -241,7 +241,7 @@ QtSLiMWindow *QtSLiMAppDelegate::findMainWindow(const QString &fileName) const
     const QList<QWidget *> topLevelWidgets = QApplication::topLevelWidgets();
     for (QWidget *widget : topLevelWidgets) {
         QtSLiMWindow *mainWin = qobject_cast<QtSLiMWindow *>(widget);
-        if (mainWin && (mainWin->currentFile == canonicalFilePath))
+        if (mainWin && (mainWin->isZombieWindow_ == false) && (mainWin->currentFile == canonicalFilePath))
             return mainWin;
     }
 
@@ -876,6 +876,12 @@ void QtSLiMAppDelegate::addActionsForGlobalMenuItems(QWidget *window)
         window->addAction(actionClearOutput);
     }
     {
+        QAction *actionClearDebug = new QAction("Clear Debug Points", this);
+        actionClearDebug->setShortcut(Qt::CTRL + Qt::ALT + Qt::Key_K);
+        connect(actionClearDebug, &QAction::triggered, qtSLiMAppDelegate, &QtSLiMAppDelegate::dispatch_clearDebugPoints);
+        window->addAction(actionClearDebug);
+    }
+    {
         QAction *actionShowDebuggingOutput = new QAction("Show Debugging Output", this);
         actionShowDebuggingOutput->setShortcut(Qt::CTRL + Qt::Key_D);
         connect(actionShowDebuggingOutput, &QAction::triggered, qtSLiMAppDelegate, &QtSLiMAppDelegate::dispatch_showDebuggingOutput);
@@ -1019,7 +1025,7 @@ void QtSLiMAppDelegate::addActionsForGlobalMenuItems(QWidget *window)
     }
 }
 
-QtSLiMWindow *QtSLiMAppDelegate::dispatchQtSLiMWindow(void)
+QtSLiMWindow *QtSLiMAppDelegate::dispatchQtSLiMWindowFromSecondaries(void)
 {
     // The QtSLiMWindow associated with the focused widget; this should be used for
     // dispatching actions that we want to work inside secondary windows that are
@@ -1048,7 +1054,7 @@ QtSLiMWindow *QtSLiMAppDelegate::dispatchQtSLiMWindow(void)
     
     // If we still can't find it, try using the parent of the active window
     // This makes graph windows work for dispatch; they are just QWidgets but their parent is correct
-    if (focusWindow)
+    if (focusWindow && !slimWindow)
         slimWindow = dynamic_cast<QtSLiMWindow*>(focusWindow->parent());
     
     return slimWindow;
@@ -1306,7 +1312,7 @@ void QtSLiMAppDelegate::dispatch_jumpToLine(void)
 void QtSLiMAppDelegate::dispatch_checkScript(void)
 {
     QWidget *focusWidget = QApplication::focusWidget();
-    QWidget *focusWindow = (focusWidget ? focusWidget->window() : nullptr);
+    QWidget *focusWindow = (focusWidget ? focusWidget->window() : activeWindow());
     QtSLiMWindow *slimWindow = dynamic_cast<QtSLiMWindow*>(focusWindow);
     QtSLiMEidosConsole *eidosConsole = dynamic_cast<QtSLiMEidosConsole*>(focusWindow);
     
@@ -1319,7 +1325,7 @@ void QtSLiMAppDelegate::dispatch_checkScript(void)
 void QtSLiMAppDelegate::dispatch_prettyprintScript(void)
 {
     QWidget *focusWidget = QApplication::focusWidget();
-    QWidget *focusWindow = (focusWidget ? focusWidget->window() : nullptr);
+    QWidget *focusWindow = (focusWidget ? focusWidget->window() : activeWindow());
     QtSLiMWindow *slimWindow = dynamic_cast<QtSLiMWindow*>(focusWindow);
     QtSLiMEidosConsole *eidosConsole = dynamic_cast<QtSLiMEidosConsole*>(focusWindow);
     
@@ -1332,7 +1338,7 @@ void QtSLiMAppDelegate::dispatch_prettyprintScript(void)
 void QtSLiMAppDelegate::dispatch_reformatScript(void)
 {
     QWidget *focusWidget = QApplication::focusWidget();
-    QWidget *focusWindow = (focusWidget ? focusWidget->window() : nullptr);
+    QWidget *focusWindow = (focusWidget ? focusWidget->window() : activeWindow());
     QtSLiMWindow *slimWindow = dynamic_cast<QtSLiMWindow*>(focusWindow);
     QtSLiMEidosConsole *eidosConsole = dynamic_cast<QtSLiMEidosConsole*>(focusWindow);
     
@@ -1344,7 +1350,7 @@ void QtSLiMAppDelegate::dispatch_reformatScript(void)
 
 void QtSLiMAppDelegate::dispatch_showEidosConsole(void)
 {
-    QtSLiMWindow *slimWindow = dispatchQtSLiMWindow();
+    QtSLiMWindow *slimWindow = dispatchQtSLiMWindowFromSecondaries();
     
     if (slimWindow)
         slimWindow->showConsoleClicked();
@@ -1352,7 +1358,7 @@ void QtSLiMAppDelegate::dispatch_showEidosConsole(void)
 
 void QtSLiMAppDelegate::dispatch_showVariableBrowser(void)
 {
-    QtSLiMWindow *slimWindow = dispatchQtSLiMWindow();
+    QtSLiMWindow *slimWindow = dispatchQtSLiMWindowFromSecondaries();
     
     if (slimWindow)
         slimWindow->showBrowserClicked();
@@ -1360,7 +1366,7 @@ void QtSLiMAppDelegate::dispatch_showVariableBrowser(void)
 
 void QtSLiMAppDelegate::dispatch_showDebuggingOutput(void)
 {
-    QtSLiMWindow *slimWindow = dispatchQtSLiMWindow();
+    QtSLiMWindow *slimWindow = dispatchQtSLiMWindowFromSecondaries();
     
     if (slimWindow)
         slimWindow->debugOutputClicked();
@@ -1369,7 +1375,7 @@ void QtSLiMAppDelegate::dispatch_showDebuggingOutput(void)
 void QtSLiMAppDelegate::dispatch_clearOutput(void)
 {
     QWidget *focusWidget = QApplication::focusWidget();
-    QWidget *focusWindow = (focusWidget ? focusWidget->window() : nullptr);
+    QWidget *focusWindow = (focusWidget ? focusWidget->window() : activeWindow());
     QtSLiMWindow *slimWindow = dynamic_cast<QtSLiMWindow*>(focusWindow);
     QtSLiMEidosConsole *eidosConsole = dynamic_cast<QtSLiMEidosConsole*>(focusWindow);
     
@@ -1379,10 +1385,20 @@ void QtSLiMAppDelegate::dispatch_clearOutput(void)
         eidosConsole->consoleTextEdit()->clearToPrompt();
 }
 
+void QtSLiMAppDelegate::dispatch_clearDebugPoints(void)
+{
+    QWidget *focusWidget = QApplication::focusWidget();
+    QWidget *focusWindow = (focusWidget ? focusWidget->window() : activeWindow());
+    QtSLiMWindow *slimWindow = dynamic_cast<QtSLiMWindow*>(focusWindow);
+    
+    if (slimWindow)
+        slimWindow->clearDebugPointsClicked();
+}
+
 void QtSLiMAppDelegate::dispatch_executeSelection(void)
 {
     QWidget *focusWidget = QApplication::focusWidget();
-    QWidget *focusWindow = (focusWidget ? focusWidget->window() : nullptr);
+    QWidget *focusWindow = (focusWidget ? focusWidget->window() : activeWindow());
     QtSLiMEidosConsole *eidosConsole = dynamic_cast<QtSLiMEidosConsole*>(focusWindow);
     
     if (eidosConsole)
@@ -1392,7 +1408,7 @@ void QtSLiMAppDelegate::dispatch_executeSelection(void)
 void QtSLiMAppDelegate::dispatch_executeAll(void)
 {
     QWidget *focusWidget = QApplication::focusWidget();
-    QWidget *focusWindow = (focusWidget ? focusWidget->window() : nullptr);
+    QWidget *focusWindow = (focusWidget ? focusWidget->window() : activeWindow());
     QtSLiMEidosConsole *eidosConsole = dynamic_cast<QtSLiMEidosConsole*>(focusWindow);
     
     if (eidosConsole)
@@ -1569,11 +1585,11 @@ QtSLiMWindow *QtSLiMAppDelegate::activeQtSLiMWindow(void)
     // We use this for dispatching commands that could go to any QtSLiMWindow, but that
     // open a new document window that gets tiled; it's best to tile from the user's
     // frontmost document window, I suppose.  We do not use it for other dispatch; see
-    // dispatchQtSLiMWindow() for that.
+    // dispatchQtSLiMWindowFromSecondaries() for that.
     QWidget *currentActiveWindow = qApp->activeWindow();
     QtSLiMWindow *currentActiveQtSLiMWindow = qobject_cast<QtSLiMWindow *>(currentActiveWindow);
     
-    if (currentActiveQtSLiMWindow)
+    if (currentActiveQtSLiMWindow && !currentActiveQtSLiMWindow->isZombieWindow_)
         return currentActiveQtSLiMWindow;
     
     // If that fails, use the last focused main window, as tracked by focusChanged()
@@ -1586,7 +1602,7 @@ QtSLiMWindow *QtSLiMAppDelegate::activeQtSLiMWindow(void)
             QWidget *focused_window = focused_window_ptr.data();
             QtSLiMWindow *focusedQtSLiMWindow = qobject_cast<QtSLiMWindow *>(focused_window);
             
-            if (focusedQtSLiMWindow)
+            if (focusedQtSLiMWindow && !focusedQtSLiMWindow->isZombieWindow_)
                 return focusedQtSLiMWindow;
         }
     }

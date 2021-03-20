@@ -38,6 +38,7 @@
 #include <QScrollBar>
 #include <QTextDocument>
 #include <QMenu>
+#include <QToolTip>
 #include <QDebug>
 
 #include "QtSLiMPreferences.h"
@@ -201,6 +202,7 @@ void QtSLiMTextEdit::highlightError(int startPosition, int endPosition)
     highlight_cursor.setPosition(startPosition);
     highlight_cursor.setPosition(endPosition, QTextCursor::KeepAnchor);
     setTextCursor(highlight_cursor);
+    centerCursor();
     
     setPalette(qtslimErrorPalette());
     
@@ -511,13 +513,26 @@ void QtSLiMTextEdit::mousePressEvent(QMouseEvent *p_event)
         // option-click gets intercepted to bring up help
         optionClickIntercepted = true;
         
-        // get the position of the character clicked on; note that this is different from
-        // QPlainTextEdit::cursorForPosition(), which returns the closest cursor position
-        // *between* characters, not which character was actually clicked on; see
-        // https://www.qtcentre.org/threads/45645-QTextEdit-cursorForPosition()-and-character-at-mouse-pointer
-        QPointF localPos = p_event->localPos();
-        QPointF documentPos = localPos + QPointF(0, verticalScrollBar()->value());
-        int characterPositionClicked = document()->documentLayout()->hitTest(documentPos, Qt::ExactHit);
+        // get the position of the character clicked on; note that cursorForPosition()
+        // returns the closest cursor position *between* characters, not which character
+        // was actually clicked on, so we try to compensate here by fudging the position
+        // leftward by half a character width; we used to use hitTest() for this purpose,
+        // but for QPlainTextEdit hitTest() always returns -1 for some reason.
+        const QFont &displayFont = QtSLiMPreferencesNotifier::instance().displayFontPref(nullptr);
+        QFontMetricsF fm(displayFont);
+        int fudgeFactor;
+        
+#if (QT_VERSION < QT_VERSION_CHECK(5, 11, 0))
+        fudgeFactor = std::round(fm.width(" ") / 2.0) + 1;                // deprecated in 5.11
+#else
+        fudgeFactor = std::round(fm.horizontalAdvance(" ") / 2.0) + 1;    // added in Qt 5.11
+#endif
+        
+        QPoint localPos = p_event->localPos().toPoint();
+        QPoint fudgedPoint(std::max(0, localPos.x() - fudgeFactor), localPos.y());
+        int characterPositionClicked = cursorForPosition(fudgedPoint).position();
+        
+        //qDebug() << "localPos ==" << localPos << ", characterPositionClicked ==" << characterPositionClicked;
         
         if (characterPositionClicked == -1)     // occurs if you click between lines of text
             return;
@@ -545,7 +560,10 @@ void QtSLiMTextEdit::mousePressEvent(QMouseEvent *p_event)
         
         if (character.isLetterOrNumber())
         {
-            symbolCursor.select(QTextCursor::WordUnderCursor);
+            // start at the anchor and find the encompassing word
+            symbolCursor.setPosition(symbolCursor.anchor(), QTextCursor::MoveAnchor);
+            symbolCursor.movePosition(QTextCursor::StartOfWord, QTextCursor::MoveAnchor);
+            symbolCursor.movePosition(QTextCursor::EndOfWord, QTextCursor::KeepAnchor);
         }
         else if ((character == '/') || (character == '=') || (character == '<') || (character == '>') || (character == '!'))
         {
@@ -1055,6 +1073,18 @@ void QtSLiMTextEdit::insertCompletion(const QString& completionOriginal)
         tc.setPosition(completionRange.location, QTextCursor::MoveAnchor);
         tc.setPosition(endPosition, QTextCursor::KeepAnchor);
         
+        // If the character after the completion range is '(', suppress trailing parentheses on the completion
+        QTextCursor afterCompletion(tc);
+        afterCompletion.setPosition(afterCompletion.position(), QTextCursor::MoveAnchor);
+        afterCompletion.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, 1);
+        
+        if (afterCompletion.selectedText() == '(')
+        {
+            if (completion.endsWith("()"))
+                completion.chop(2);
+        }
+        
+        // Replace the completion range with the completion string
         tc.insertText(completion);
         
         // If the completion is multiline, put the insertion point inside the braces of the completion
@@ -2341,18 +2371,35 @@ void QtSLiMTextEdit::_completionHandlerWithRangeForCompletion(NSRange *baseRange
 class LineNumberArea : public QWidget
 {
 public:
-    LineNumberArea(QtSLiMScriptTextEdit *editor) : QWidget(editor), codeEditor(editor) {}
+    LineNumberArea(QtSLiMScriptTextEdit *editor);
 
     virtual QSize sizeHint() const override { return QSize(codeEditor->lineNumberAreaWidth(), 0); }
 
 protected:
+    virtual bool event(QEvent *p_event) override;
     virtual void paintEvent(QPaintEvent *p_paintEvent) override { codeEditor->lineNumberAreaPaintEvent(p_paintEvent); }
     virtual void mousePressEvent(QMouseEvent *p_mouseEvent) override { codeEditor->lineNumberAreaMouseEvent(p_mouseEvent); }
     virtual void contextMenuEvent(QContextMenuEvent *p_event) override { codeEditor->lineNumberAreaContextMenuEvent(p_event); }
+    virtual void wheelEvent(QWheelEvent *p_wheelEvent) override { codeEditor->lineNumberAreaWheelEvent(p_wheelEvent); }
 
 private:
     QtSLiMScriptTextEdit *codeEditor;
 };
+
+LineNumberArea::LineNumberArea(QtSLiMScriptTextEdit *editor) : QWidget(editor), codeEditor(editor)
+{
+    setMouseTracking(true);     // for live tooltip updating (debug point gutter vs. line numbers)
+}
+
+bool LineNumberArea::event(QEvent *p_event)
+{
+    if (p_event->type() == QEvent::ToolTip) {
+        QHelpEvent *helpEvent = static_cast<QHelpEvent *>(p_event);
+        codeEditor->lineNumberAreaToolTipEvent(helpEvent); 
+        return true;
+    }
+    return QWidget::event(p_event);
+}
 
 
 //
@@ -2361,11 +2408,18 @@ private:
 
 QtSLiMScriptTextEdit::QtSLiMScriptTextEdit(const QString &text, QWidget *p_parent) : QtSLiMTextEdit(text, p_parent)
 {
-    initializeLineNumbers();
+    sharedInit();
 }
 
 QtSLiMScriptTextEdit::QtSLiMScriptTextEdit(QWidget *p_parent) : QtSLiMTextEdit(p_parent)
 {
+    sharedInit();
+}
+
+void QtSLiMScriptTextEdit::sharedInit(void)
+{
+    setCenterOnScroll(true);
+    
     initializeLineNumbers();
 }
 
@@ -2811,14 +2865,27 @@ void QtSLiMScriptTextEdit::highlightCurrentLine()
 }
 
 // light appearance
+static QColor bugAreaBackground = QtSLiMColorWithWhite(0.95, 1.0);
 static QColor lineAreaBackground = QtSLiMColorWithWhite(0.92, 1.0);
 static QColor lineAreaNumber = QtSLiMColorWithWhite(0.75, 1.0);
 static QColor lineAreaNumberCurrent = QtSLiMColorWithWhite(0.4, 1.0);
 
 // dark appearance
+static QColor bugAreaBackground_DARK = QtSLiMColorWithWhite(0.05, 1.0);
 static QColor lineAreaBackground_DARK = QtSLiMColorWithWhite(0.08, 1.0);
 static QColor lineAreaNumber_DARK = QtSLiMColorWithWhite(0.25, 1.0);
 static QColor lineAreaNumberCurrent_DARK = QtSLiMColorWithWhite(0.6, 1.0);
+
+void QtSLiMScriptTextEdit::lineNumberAreaToolTipEvent(QHelpEvent *p_helpEvent)
+{
+    // provide different tooltips for the debug point gutter versus the line number area
+    QPointF localPos = p_helpEvent->pos();
+    
+    if ((lineNumberAreaBugWidth == 0) || ((localPos.x() < 0) || (localPos.x() >= lineNumberAreaBugWidth + 2)))     // +2 for a little slop
+        QToolTip::showText(p_helpEvent->globalPos(), "<html><head/><body><p>script line numbers</p></body></html>");
+    else
+        QToolTip::showText(p_helpEvent->globalPos(), "<html><head/><body><p>debug point gutter (click to set/clear a debug point)</p></body></html>");
+}
 
 void QtSLiMScriptTextEdit::lineNumberAreaPaintEvent(QPaintEvent *p_paintEvent)
 {
@@ -2840,7 +2907,10 @@ void QtSLiMScriptTextEdit::lineNumberAreaPaintEvent(QPaintEvent *p_paintEvent)
     bool inDarkMode = QtSLiMInDarkMode();
     QPainter painter(lineNumberArea);
     
-    painter.fillRect(bounds, inDarkMode ? lineAreaBackground_DARK : lineAreaBackground);
+    // We now show slightly different background colors for the debug point gutter vs. the line number area
+    //painter.fillRect(bounds, inDarkMode ? lineAreaBackground_DARK : lineAreaBackground);
+    painter.fillRect(bugRect, inDarkMode ? bugAreaBackground_DARK : bugAreaBackground);
+    painter.fillRect(lineNumberRect, inDarkMode ? lineAreaBackground_DARK : lineAreaBackground);
     
     if ((bugCount == 0) && !showLineNumbers)
         return;
@@ -2939,6 +3009,12 @@ void QtSLiMScriptTextEdit::lineNumberAreaMouseEvent(QMouseEvent *p_mouseEvent)
     if (lineNumberAreaBugWidth == 0)
         return;
     
+    // For some reason, Qt calls mousePressEvent() first for control-clicks and right-clicks,
+    // and *then* calls contextMenuEvent(), so we need to detect the context menu situation
+    // and return without doing anything.  Note that Qt::RightButton is set for control-clicks!
+    if (p_mouseEvent->button() == Qt::RightButton)
+        return;
+    
     QPointF localPos = p_mouseEvent->localPos();
     qreal localY = localPos.y();
     
@@ -2947,9 +3023,7 @@ void QtSLiMScriptTextEdit::lineNumberAreaMouseEvent(QMouseEvent *p_mouseEvent)
     if ((localPos.x() < 0) || (localPos.x() >= lineNumberAreaBugWidth + 2))     // +2 for a little slop
             return;
     
-    // Find the position of the click in the document.  We loop through the blocks manually; I tried using
-    // document()->documentLayout()->hitTest(documentPos, Qt::FuzzyHit) but it didn't seem to like blank lines,
-    // although that may have been user error.  Anyway, this approach works.
+    // Find the position of the click in the document.  We loop through the blocks manually.
     QTextBlock block = firstVisibleBlock();
     int blockNumber = block.blockNumber();
     int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
@@ -2982,9 +3056,11 @@ void QtSLiMScriptTextEdit::lineNumberAreaContextMenuEvent(QContextMenuEvent *p_e
     if (lineNumberAreaBugWidth == 0)
         return;
     
+    p_event->accept();
+    
     QMenu contextMenu("line_area_menu", this);
     
-    QAction *clearDebugPoints = contextMenu.addAction("Clear Debug Points");
+    QAction *clearDebugPointsAction = contextMenu.addAction("Clear Debug Points");
     
     // Run the context menu synchronously
     QAction *action = contextMenu.exec(p_event->globalPos());
@@ -2992,13 +3068,25 @@ void QtSLiMScriptTextEdit::lineNumberAreaContextMenuEvent(QContextMenuEvent *p_e
     // Act upon the chosen action; we just do it right here instead of dealing with slots
     if (action)
     {
-        if (action == clearDebugPoints)
-        {
-            bugCursors.clear();
-            updateDebugPoints();
-        }
+        if (action == clearDebugPointsAction)
+            clearDebugPoints();
     }
 }
+
+void QtSLiMScriptTextEdit::lineNumberAreaWheelEvent(QWheelEvent *p_wheelEvent)
+{
+    // We want wheel events in the debug/line number area to scroll the script textview, so it forwards them to us here
+    // I'm not sure of the legality of this, since the event is tailored for a different widget, but it seems to work...
+    wheelEvent(p_wheelEvent);
+}
+
+void QtSLiMScriptTextEdit::clearDebugPoints(void)
+{
+    bugCursors.clear();
+    updateDebugPoints();
+}
+
+
 
 
 

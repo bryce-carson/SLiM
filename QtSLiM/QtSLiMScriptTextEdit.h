@@ -33,6 +33,7 @@ class EidosCallSignature;
 class QtSLiMWindow;
 class QtSLiMEidosConsole;
 class QCompleter;
+class QHelpEvent;
 class QPaintEvent;
 class QMouseEvent;
 
@@ -188,6 +189,7 @@ public slots:
     void shiftSelectionLeft(void);
     void shiftSelectionRight(void);
     void commentUncommentSelection(void);
+    void clearDebugPoints(void);
     
 protected:
     QStringList linesForRoundedSelection(QTextCursor &cursor, bool &movedBack);
@@ -195,12 +197,15 @@ protected:
     // From here down is the machinery for providing line numbers
     // This code is adapted from https://doc.qt.io/qt-5/qtwidgets-widgets-codeeditor-example.html
 public:
+    void lineNumberAreaToolTipEvent(QHelpEvent *p_helpEvent);
     void lineNumberAreaPaintEvent(QPaintEvent *p_paintEvent);
     void lineNumberAreaMouseEvent(QMouseEvent *p_mouseEvent);
     void lineNumberAreaContextMenuEvent(QContextMenuEvent *p_event);
+    void lineNumberAreaWheelEvent(QWheelEvent *p_wheelEvent);
     int lineNumberAreaWidth(void);
 
 protected:
+    void sharedInit(void);
     void initializeLineNumbers(void);
     virtual void resizeEvent(QResizeEvent *p_event) override;
 

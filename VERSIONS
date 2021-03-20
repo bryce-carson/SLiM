@@ -8,6 +8,12 @@ The build numbers given here are visible in SLiMgui's about panel.  They are not
 
 
 development head:
+	change to allow .trees files to contain unreferenced empty subpops, to allow ancestral use of subpops that are now empty (see #168)
+	disallow reuse of subpopulation ids if they have gone into the tree-sequence tables, to prevent collisions
+	change so that entries for unused subpops are not modified in population tables loaded from a tree sequence (PR #172)
+
+
+version 3.6 (build 2784; Eidos version 2.6):
 	update to JSON for Modern C++ version 3.9.1
 	add metadata= parameter to treeSeqOutput(), to support user-generated metadata on the tree sequence
 	make ampersands show up in the Jump menu properly in SLiMgui
@@ -19,6 +25,7 @@ development head:
 	enable multiple selection in the Find Recipe panel
 	revise recipes to avoid outputFull() when it takes a long time (Qt is slow processing big output dumps)
 	add a [permanent=T] optional flag to treeSeqRememberIndividuals() to allow for individuals to be "retained" rather than "remembered", thanks to Yan Wong
+	add [retainCoalescentOnly=T] flag for initializeTreeSeq() to modify simplification to keep more retained nodes than it otherwise would
 	add a generationStage property to SLiMSim to access the current generation cycle stage
 	improve command-line processing – add -h/-help option, accept -- prefix
 	add a precision property to LogFile to govern the floating-point precision of its output (for other types of output, format() can often be used to get a specific output precision)
@@ -40,7 +47,14 @@ development head:
 	fix a bug with the reproductive output tracking for an individual being incorrect after the individual is moved with takeMigrants()
 	fix a serious bug with takeMigrants() that could lead to corruption/crashes, if a variable holding Individual objects was kept across the call and used again
 	add verbosity property to SLiMSim, to get/set the verbosity level
-
+	fix memory leak of subpopulations after removeSubppulation() is called in WF models; could also cause an error, "ERROR (Population::TallyMutationReferences): (internal error) tally != total genome count"
+	bump the .trees file version to reflect the change in sense for the individual flags (SLIM_TSK_INDIVIDUAL_RETAINED instead of SLIM_TSK_INDIVIDUAL_FIRST_GEN); no user-visible consequence
+	fix bug causing output from nested events/callbacks/functions to be emitted in the wrong (non-chronological) order in some cases
+	add a debugIndent() function to Eidos, providing the current indentation string for use in producing error output that matches the indentation of debug points
+	add recipe 16.21, "Dynamic population structure in nonWF models"
+	extend Dictionary with getRowValues() and appendKeysAndValuesFrom() methods to enable dataframe-like usage patterns with it
+	extend Dictionary() constructor to allow it to be passed key-value pairs to set, or a Dictionary to copy
+	extend Dictionary with an identicalContents() method to test for equality of Dictionary objects (containing the identical keys and values)
 
 version 3.5 (build 2663; Eidos version 2.5):
 	added build instructions for Windows WSL, thanks to Bernard Kim (no code change)

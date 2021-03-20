@@ -40,8 +40,8 @@ class Subpopulation;
 class SLiMEidosBlock;
 
 
-#define SLIM_VERSION_STRING	("3.5")
-#define SLIM_VERSION_FLOAT	(3.5)
+#define SLIM_VERSION_STRING	("3.6")
+#define SLIM_VERSION_FLOAT	(3.6)
 
 
 // This should be called once at startup to give SLiM an opportunity to initialize static state
@@ -350,6 +350,7 @@ SLiMEidosBlock *SLiM_ExtractSLiMEidosBlockFromEidosValue_io(EidosValue *p_value,
  */
 
 #define DEBUG_MUTATIONS				0		// turn on logging of mutation construction and destruction
+#define DEBUG_MUTATION_RUNS			0		// turn on stat collection and logging regarding mutation run usage
 
 
 // *******************************************************************************************************************

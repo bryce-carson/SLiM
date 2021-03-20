@@ -780,6 +780,11 @@ void QtSLiMWindow::invalidateUI(void)
     // First set a flag indicating that we're going into zombie mode
     isZombieWindow_ = true;
     
+    // Set some other state to prevent ourselves from being reused in any way
+    isUntitled = false;
+    isTransient = false;
+    currentFile = "ZOMBIE ZOMBIE ZOMBIE ZOMBIE ZOMBIE";
+    
     // Stop all timers, so we don't try to play in the background
     continuousPlayElapsedTimer_.invalidate();
     continuousPlayInvocationTimer_.stop();
@@ -1604,15 +1609,20 @@ void QtSLiMWindow::updateAfterTickFull(bool fullUpdate)
         else
         {
             bool inDarkMode = QtSLiMInDarkMode();
-            QString message(inDarkMode ? "<font color='#AAAAAA' style='font-size: 11px;'><tt>%1</tt> CPU seconds elapsed inside SLiM; <tt>%2</tt> mutations segregating, <tt>%3</tt> substitutions.</font>"
-                                       : "<font color='#555555' style='font-size: 11px;'><tt>%1</tt> CPU seconds elapsed inside SLiM; <tt>%2</tt> mutations segregating, <tt>%3</tt> substitutions.</font>");
+            QString message(inDarkMode ? "<font color='#AAAAAA' style='font-size: 11px;'><tt>%1</tt> CPU seconds elapsed inside SLiM; <tt>%2</tt> MB memory usage in SLiM; <tt>%3</tt> mutations segregating, <tt>%4</tt> substitutions.</font>"
+                                       : "<font color='#555555' style='font-size: 11px;'><tt>%1</tt> CPU seconds elapsed inside SLiM; <tt>%2</tt> MB memory usage in SLiM; <tt>%3</tt> mutations segregating, <tt>%4</tt> substitutions.</font>");
             
             if (sim)
             {
                 int registry_size;
                 sim->population_.MutationRegistry(&registry_size);
                 
+                SLiM_MemoryUsage current_memory_usage;
+                sim->TabulateMemoryUsage(&current_memory_usage, nullptr);
+                double current_memory_MB = current_memory_usage.totalMemoryUsage / (1024.0 * 1024.0);
+                
                 ui->statusBar->showMessage(message.arg(elapsedTimeInSLiM, 0, 'f', 6)
+                                           .arg(current_memory_MB, 0, 'f', 1)
                                            .arg(registry_size)
                                            .arg(sim->population_.substitutions_.size()));
             }
@@ -1714,6 +1724,7 @@ void QtSLiMWindow::updateUIEnabling(void)
     ui->showGenomicElementsButton->setEnabled(!invalidSimulation_);
     ui->showFixedSubstitutionsButton->setEnabled(!invalidSimulation_);
     
+    ui->clearDebugButton->setEnabled(true);
     ui->checkScriptButton->setEnabled(!continuousPlayOn_);
     ui->prettyprintButton->setEnabled(!continuousPlayOn_);
     ui->scriptHelpButton->setEnabled(true);
@@ -1737,12 +1748,12 @@ void QtSLiMWindow::updateUIEnabling(void)
     if (consoleController)
         consoleController->setInterfaceEnabled(!continuousPlayOn_);
     
-    // Then, if we are the active window, we update the menus to reflect our state
-    // If there's an active window but it isn't us, we reflect that situation with a different method
+    // Then, if we are the focused or active window, we update the menus to reflect our state
+    // If there's a focused/active window but it isn't us, we reflect that situation with a different method
     // Keep in mind that in Qt each QMainWindow has its own menu bar, its own actions, etc.; this is not global state!
     // This means we spend a little time updating menu enable states that are not visible anyway, but it's fast
     QWidget *currentFocusWidget = qApp->focusWidget();
-    QWidget *focusWindow = (currentFocusWidget ? currentFocusWidget->window() : nullptr);
+    QWidget *focusWindow = (currentFocusWidget ? currentFocusWidget->window() : qtSLiMAppDelegate->activeWindow());
     
     if (focusWindow == this) {
         //qDebug() << "updateMenuEnablingACTIVE()";
@@ -1769,6 +1780,7 @@ void QtSLiMWindow::updateMenuEnablingACTIVE(QWidget *p_focusWidget)
     ui->actionRecycle->setEnabled(!continuousPlayOn_);
     
     //ui->menuScript->setEnabled(true);
+    ui->actionClearDebug->setEnabled(true);
     ui->actionCheckScript->setEnabled(!continuousPlayOn_);
     ui->actionPrettyprintScript->setEnabled(!continuousPlayOn_);
     ui->actionReformatScript->setEnabled(!continuousPlayOn_);
@@ -1817,12 +1829,13 @@ void QtSLiMWindow::updateMenuEnablingINACTIVE(QWidget *p_focusWidget, QWidget *f
     ui->actionExecuteAll->setEnabled(consoleFocusedAndEditable);
     ui->actionExecuteSelection->setEnabled(consoleFocusedAndEditable);
     
-    // but these two menu items apply only to QtSLiMWindow, not to the Eidos console
+    // but these menu items apply only to QtSLiMWindow, not to the Eidos console
+    ui->actionClearDebug->setEnabled(false);
     ui->actionDumpPopulationState->setEnabled(false);
     ui->actionChangeWorkingDirectory->setEnabled(false);
     
     // we can show our various windows as long as we can reach the controller window
-    QtSLiMWindow *slimWindow = qtSLiMAppDelegate->dispatchQtSLiMWindow();
+    QtSLiMWindow *slimWindow = qtSLiMAppDelegate->dispatchQtSLiMWindowFromSecondaries();
     bool canReachSLiMWindow = !!slimWindow;
     
     ui->actionShowScriptHelp->setEnabled(canReachSLiMWindow);
@@ -3797,6 +3810,7 @@ void QtSLiMWindow::jumpToPopupButtonRunMenu(void)
                     cursor.setPosition(comment_start, QTextCursor::MoveAnchor);
                     cursor.setPosition(comment_end, QTextCursor::KeepAnchor);
                     scriptTE->setTextCursor(cursor);
+                    scriptTE->centerCursor();
                 });
                 
                 QFont action_font = jumpAction->font();
@@ -3884,6 +3898,7 @@ void QtSLiMWindow::jumpToPopupButtonRunMenu(void)
                     cursor.setPosition(decl_start, QTextCursor::MoveAnchor);
                     cursor.setPosition(decl_end, QTextCursor::KeepAnchor);
                     scriptTE->setTextCursor(cursor);
+                    scriptTE->centerCursor();
                 });
                 
                 jumpActions.emplace_back(decl_start, jumpAction);
@@ -3937,6 +3952,13 @@ void QtSLiMWindow::clearOutputClicked(void)
     isTransient = false;    // Since the user has taken an interest in the window, clear the document's transient status
     
     ui->outputTextEdit->setPlainText("");
+}
+
+void QtSLiMWindow::clearDebugPointsClicked(void)
+{
+    isTransient = false;    // Since the user has taken an interest in the window, clear the document's transient status
+    
+    ui->scriptTextEdit->clearDebugPoints();
 }
 
 void QtSLiMWindow::dumpPopulationClicked(void)

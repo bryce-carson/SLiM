@@ -80,10 +80,7 @@ Population::~Population(void)
 #endif
 	
 	// dispose of any freed subpops
-	for (auto removed_subpop : removed_subpops_)
-		delete removed_subpop;
-	
-	removed_subpops_.clear();
+	PurgeRemovedSubpopulations();
 }
 
 void Population::RemoveAllSubpopulationInfo(void)
@@ -160,8 +157,8 @@ void Population::RemoveAllSubpopulationInfo(void)
 // add new empty subpopulation p_subpop_id of size p_subpop_size
 Subpopulation *Population::AddSubpopulation(slim_objectid_t p_subpop_id, slim_popsize_t p_subpop_size, double p_initial_sex_ratio) 
 { 
-	if (subpops_.count(p_subpop_id) != 0)
-		EIDOS_TERMINATION << "ERROR (Population::AddSubpopulation): subpopulation p" << p_subpop_id << " already exists." << EidosTerminate();
+	if (sim_.SubpopulationIDInUse(p_subpop_id))
+		EIDOS_TERMINATION << "ERROR (Population::AddSubpopulation): subpopulation p" << p_subpop_id << " has been used already, and cannot be used again (to prevent conflicts)." << EidosTerminate();
 	if ((p_subpop_size < 1) && (sim_.ModelType() == SLiMModelType::kModelTypeWF))	// allowed in nonWF models
 		EIDOS_TERMINATION << "ERROR (Population::AddSubpopulation): subpopulation p" << p_subpop_id << " empty." << EidosTerminate();
 	
@@ -193,8 +190,8 @@ Subpopulation *Population::AddSubpopulation(slim_objectid_t p_subpop_id, slim_po
 // add new subpopulation p_subpop_id of size p_subpop_size individuals drawn from source subpopulation p_source_subpop_id
 Subpopulation *Population::AddSubpopulationSplit(slim_objectid_t p_subpop_id, Subpopulation &p_source_subpop, slim_popsize_t p_subpop_size, double p_initial_sex_ratio)
 {
-	if (subpops_.count(p_subpop_id) != 0)
-		EIDOS_TERMINATION << "ERROR (Population::AddSubpopulationSplit): subpopulation p" << p_subpop_id << " already exists." << EidosTerminate();
+	if (sim_.SubpopulationIDInUse(p_subpop_id))
+		EIDOS_TERMINATION << "ERROR (Population::AddSubpopulationSplit): subpopulation p" << p_subpop_id << " has been used already, and cannot be used again (to prevent conflicts)." << EidosTerminate();
 	if (p_subpop_size < 1)
 		EIDOS_TERMINATION << "ERROR (Population::AddSubpopulationSplit): subpopulation p" << p_subpop_id << " empty." << EidosTerminate();
 	
@@ -346,6 +343,17 @@ void Population::RemoveSubpopulation(Subpopulation &p_subpop)
 }
 #endif  // SLIM_NONWF_ONLY
 
+void Population::PurgeRemovedSubpopulations(void)
+{
+	if (removed_subpops_.size())
+	{
+		for (auto removed_subpop : removed_subpops_)
+			delete removed_subpop;
+		
+		removed_subpops_.clear();
+	}
+}
+
 #ifdef SLIM_WF_ONLY
 // set fraction p_migrant_fraction of p_subpop_id that originates as migrants from p_source_subpop_id per generation  
 void Population::SetMigration(Subpopulation &p_subpop, slim_objectid_t p_source_subpop_id, double p_migrant_fraction) 
@@ -373,6 +381,8 @@ void Population::ExecuteScript(SLiMEidosBlock *p_script_block, slim_generation_t
 #endif
 #if DEBUG_POINTS_ENABLED
 	// SLiMgui debugging point
+	EidosDebugPointIndent indenter;
+	
 	{
 		EidosInterpreterDebugPointsSet *debug_points = sim_.DebugPoints();
 		EidosToken *decl_token = p_script_block->root_node_->token_;
@@ -380,7 +390,7 @@ void Population::ExecuteScript(SLiMEidosBlock *p_script_block, slim_generation_t
 		if (debug_points && debug_points->set.size() && (decl_token->token_line_ != -1) &&
 			(debug_points->set.find(decl_token->token_line_) != debug_points->set.end()))
 		{
-			SLIM_ERRSTREAM << "#DEBUG ";
+			SLIM_ERRSTREAM << EidosDebugPointIndent::Indent() << "#DEBUG ";
 			
 			if (p_script_block->type_ == SLiMEidosBlockType::SLiMEidosEventEarly)
 				SLIM_ERRSTREAM << "early()";
@@ -395,6 +405,7 @@ void Population::ExecuteScript(SLiMEidosBlock *p_script_block, slim_generation_t
 				SLIM_ERRSTREAM << " s" << p_script_block->block_id_;
 			
 			SLIM_ERRSTREAM << " (line " << (decl_token->token_line_ + 1) << sim_.DebugPointInfo() << ")" << std::endl;
+			indenter.indent();
 		}
 	}
 #endif
@@ -403,7 +414,7 @@ void Population::ExecuteScript(SLiMEidosBlock *p_script_block, slim_generation_t
 	EidosSymbolTable client_symbols(EidosSymbolTableType::kLocalVariablesTable, &callback_symbols);
 	EidosFunctionMap &function_map = sim_.FunctionMap();
 	
-	EidosInterpreter interpreter(p_script_block->compound_statement_node_, client_symbols, function_map, &sim_);
+	EidosInterpreter interpreter(p_script_block->compound_statement_node_, client_symbols, function_map, &sim_, SLIM_OUTSTREAM, SLIM_ERRSTREAM);
 	
 	if (p_script_block->contains_self_)
 		callback_symbols.InitializeConstantSymbolEntry(p_script_block->SelfSymbolTableEntry());		// define "self"
@@ -415,17 +426,9 @@ void Population::ExecuteScript(SLiMEidosBlock *p_script_block, slim_generation_t
 		
 		if (result->Type() != EidosValueType::kValueVOID)
 			EIDOS_TERMINATION << "ERROR (Population::ExecuteScript): " << p_script_block->type_ << " callbacks must not return a value; use a \"return;\" statement to explicitly return void if desired." << EidosTerminate(p_script_block->identifier_token_);
-		
-		// Output generated by the interpreter goes to our output stream
-		interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-		interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
 	}
 	catch (...)
 	{
-		// Emit final output even on a throw, so that stop() messages and such get printed
-		interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-		interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
-		
 		throw;
 	}
 }
@@ -459,6 +462,8 @@ slim_popsize_t Population::ApplyMateChoiceCallbacks(slim_popsize_t p_parent1_ind
 		{
 #if DEBUG_POINTS_ENABLED
 			// SLiMgui debugging point
+			EidosDebugPointIndent indenter;
+			
 			{
 				EidosInterpreterDebugPointsSet *debug_points = sim_.DebugPoints();
 				EidosToken *decl_token = mate_choice_callback->root_node_->token_;
@@ -466,12 +471,16 @@ slim_popsize_t Population::ApplyMateChoiceCallbacks(slim_popsize_t p_parent1_ind
 				if (debug_points && debug_points->set.size() && (decl_token->token_line_ != -1) &&
 					(debug_points->set.find(decl_token->token_line_) != debug_points->set.end()))
 				{
-					SLIM_ERRSTREAM << "#DEBUG mateChoice()";
+					SLIM_ERRSTREAM << EidosDebugPointIndent::Indent() << "#DEBUG mateChoice(";
+					if (mate_choice_callback->subpopulation_id_ != -1)
+						SLIM_ERRSTREAM << "p" << mate_choice_callback->subpopulation_id_;
+					SLIM_ERRSTREAM << ")";
 					
 					if (mate_choice_callback->block_id_ != -1)
 						SLIM_ERRSTREAM << " s" << mate_choice_callback->block_id_;
 					
 					SLIM_ERRSTREAM << " (line " << (decl_token->token_line_ + 1) << sim_.DebugPointInfo() << ")" << std::endl;
+					indenter.indent();
 				}
 			}
 #endif
@@ -501,7 +510,7 @@ slim_popsize_t Population::ApplyMateChoiceCallbacks(slim_popsize_t p_parent1_ind
 				EidosSymbolTable callback_symbols(EidosSymbolTableType::kContextConstantsTable, &sim_.SymbolTable());
 				EidosSymbolTable client_symbols(EidosSymbolTableType::kLocalVariablesTable, &callback_symbols);
 				EidosFunctionMap &function_map = sim_.FunctionMap();
-				EidosInterpreter interpreter(mate_choice_callback->compound_statement_node_, client_symbols, function_map, &sim_);
+				EidosInterpreter interpreter(mate_choice_callback->compound_statement_node_, client_symbols, function_map, &sim_, SLIM_OUTSTREAM, SLIM_ERRSTREAM);
 				
 				if (mate_choice_callback->contains_self_)
 					callback_symbols.InitializeConstantSymbolEntry(mate_choice_callback->SelfSymbolTableEntry());		// define "self"
@@ -611,17 +620,9 @@ slim_popsize_t Population::ApplyMateChoiceCallbacks(slim_popsize_t p_parent1_ind
 					{
 						EIDOS_TERMINATION << "ERROR (Population::ApplyMateChoiceCallbacks): invalid return value for mateChoice() callback." << EidosTerminate(mate_choice_callback->identifier_token_);
 					}
-					
-					// Output generated by the interpreter goes to our output stream
-					interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-					interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
 				}
 				catch (...)
 				{
-					// Emit final output even on a throw, so that stop() messages and such get printed
-					interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-					interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
-					
 					throw;
 				}
 			}
@@ -820,6 +821,8 @@ bool Population::ApplyModifyChildCallbacks(Individual *p_child, Genome *p_child_
 		{
 #if DEBUG_POINTS_ENABLED
 			// SLiMgui debugging point
+			EidosDebugPointIndent indenter;
+			
 			{
 				EidosInterpreterDebugPointsSet *debug_points = sim_.DebugPoints();
 				EidosToken *decl_token = modify_child_callback->root_node_->token_;
@@ -827,12 +830,16 @@ bool Population::ApplyModifyChildCallbacks(Individual *p_child, Genome *p_child_
 				if (debug_points && debug_points->set.size() && (decl_token->token_line_ != -1) &&
 					(debug_points->set.find(decl_token->token_line_) != debug_points->set.end()))
 				{
-					SLIM_ERRSTREAM << "#DEBUG modifyChild()";
+					SLIM_ERRSTREAM << EidosDebugPointIndent::Indent() << "#DEBUG modifyChild(";
+					if (modify_child_callback->subpopulation_id_ != -1)
+						SLIM_ERRSTREAM << "p" << modify_child_callback->subpopulation_id_;
+					SLIM_ERRSTREAM << ")";
 					
 					if (modify_child_callback->block_id_ != -1)
 						SLIM_ERRSTREAM << " s" << modify_child_callback->block_id_;
 					
 					SLIM_ERRSTREAM << " (line " << (decl_token->token_line_ + 1) << sim_.DebugPointInfo() << ")" << std::endl;
+					indenter.indent();
 				}
 			}
 #endif
@@ -841,7 +848,7 @@ bool Population::ApplyModifyChildCallbacks(Individual *p_child, Genome *p_child_
 			EidosSymbolTable callback_symbols(EidosSymbolTableType::kContextConstantsTable, &sim_.SymbolTable());
 			EidosSymbolTable client_symbols(EidosSymbolTableType::kLocalVariablesTable, &callback_symbols);
 			EidosFunctionMap &function_map = sim_.FunctionMap();
-			EidosInterpreter interpreter(modify_child_callback->compound_statement_node_, client_symbols, function_map, &sim_);
+			EidosInterpreter interpreter(modify_child_callback->compound_statement_node_, client_symbols, function_map, &sim_, SLIM_OUTSTREAM, SLIM_ERRSTREAM);
 			
 			if (modify_child_callback->contains_self_)
 				callback_symbols.InitializeConstantSymbolEntry(modify_child_callback->SelfSymbolTableEntry());		// define "self"
@@ -908,10 +915,6 @@ bool Population::ApplyModifyChildCallbacks(Individual *p_child, Genome *p_child_
 				
 				eidos_logical_t generate_child = result->LogicalAtIndex(0, nullptr);
 				
-				// Output generated by the interpreter goes to our output stream
-				interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-				interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
-				
 				// If this callback told us not to generate the child, we do not call the rest of the callback chain; we're done
 				if (!generate_child)
 				{
@@ -928,10 +931,6 @@ bool Population::ApplyModifyChildCallbacks(Individual *p_child, Genome *p_child_
 			}
 			catch (...)
 			{
-				// Emit final output even on a throw, so that stop() messages and such get printed
-				interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-				interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
-				
 				throw;
 			}
 		}
@@ -2042,6 +2041,8 @@ bool Population::ApplyRecombinationCallbacks(slim_popsize_t p_parent_index, Geno
 		{
 #if DEBUG_POINTS_ENABLED
 			// SLiMgui debugging point
+			EidosDebugPointIndent indenter;
+			
 			{
 				EidosInterpreterDebugPointsSet *debug_points = sim_.DebugPoints();
 				EidosToken *decl_token = recombination_callback->root_node_->token_;
@@ -2049,12 +2050,16 @@ bool Population::ApplyRecombinationCallbacks(slim_popsize_t p_parent_index, Geno
 				if (debug_points && debug_points->set.size() && (decl_token->token_line_ != -1) &&
 					(debug_points->set.find(decl_token->token_line_) != debug_points->set.end()))
 				{
-					SLIM_ERRSTREAM << "#DEBUG recombination()";
+					SLIM_ERRSTREAM << EidosDebugPointIndent::Indent() << "#DEBUG recombination(";
+					if (recombination_callback->subpopulation_id_ != -1)
+						SLIM_ERRSTREAM << "p" << recombination_callback->subpopulation_id_;
+					SLIM_ERRSTREAM << ")";
 					
 					if (recombination_callback->block_id_ != -1)
 						SLIM_ERRSTREAM << " s" << recombination_callback->block_id_;
 					
 					SLIM_ERRSTREAM << " (line " << (decl_token->token_line_ + 1) << sim_.DebugPointInfo() << ")" << std::endl;
+					indenter.indent();
 				}
 			}
 #endif
@@ -2063,7 +2068,7 @@ bool Population::ApplyRecombinationCallbacks(slim_popsize_t p_parent_index, Geno
 			EidosSymbolTable callback_symbols(EidosSymbolTableType::kContextConstantsTable, &sim_.SymbolTable());
 			EidosSymbolTable client_symbols(EidosSymbolTableType::kLocalVariablesTable, &callback_symbols);
 			EidosFunctionMap &function_map = sim_.FunctionMap();
-			EidosInterpreter interpreter(recombination_callback->compound_statement_node_, client_symbols, function_map, &sim_);
+			EidosInterpreter interpreter(recombination_callback->compound_statement_node_, client_symbols, function_map, &sim_, SLIM_OUTSTREAM, SLIM_ERRSTREAM);
 			
 			if (recombination_callback->contains_self_)
 				callback_symbols.InitializeConstantSymbolEntry(recombination_callback->SelfSymbolTableEntry());		// define "self"
@@ -2120,17 +2125,9 @@ bool Population::ApplyRecombinationCallbacks(slim_popsize_t p_parent_index, Geno
 						}
 					}
 				}
-				
-				// Output generated by the interpreter goes to our output stream
-				interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-				interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
 			}
 			catch (...)
 			{
-				// Emit final output even on a throw, so that stop() messages and such get printed
-				interpreter.FlushExecutionOutputToStream(SLIM_OUTSTREAM);
-				interpreter.FlushErrorOutputToStream(SLIM_ERRSTREAM);
-				
 				throw;
 			}
 		}
@@ -5254,13 +5251,7 @@ void Population::SwapGenerations(void)
 		subpop->TallyLifetimeReproductiveOutput();
 	
 	// dispose of any freed subpops
-	if (removed_subpops_.size())
-	{
-		for (auto removed_subpop : removed_subpops_)
-			delete removed_subpop;
-		
-		removed_subpops_.clear();
-	}
+	PurgeRemovedSubpopulations();
 	
 	// make children the new parents; each subpop flips its child_generation_valid flag at the end of this call
 	for (std::pair<const slim_objectid_t,Subpopulation*> &subpop_pair : subpops_)
