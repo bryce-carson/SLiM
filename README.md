@@ -1,5 +1,5 @@
 <p align="center">
-	<img alt="Screenshot of SLiMgui running on OS X." height="75%" width="75%" src="https://messerlab.files.wordpress.com/2021/12/slimgui_screenshot.jpg"/>
+	<img alt="Screenshot of SLiMgui running on Fedora." height="65%" width="65%" src="https://github.com/bryce-carson/SLiM/blob/a2d5c944763c8c620ac7977703eb0c15c654d681/Screenshot%20from%202022-08-19%2021-26-59.png"/>
 </p>
 
 
@@ -100,18 +100,6 @@ Installation
 </tr>
 </tbody>
 </table>
-
-<ul class="distro-logos">
-  <li><a href="/running.html#fedora"><img src="/images/site/os-fedora.svg" alt="Fedora"></a></li>
-  <li><a href="/running.html#rhel"><img src="/images/site/os-rhel.svg" alt="Red Hat Enterprise Linux"></a></li>
-  <li><a href="/running.html#coreos"><img src="/images/site/os-coreos.svg" alt="Fedora CoreOS"></a></li>
-  <li><a href="/running.html#centos"><img src="/images/site/os-centos.svg" alt="CentOS"></a></li>
-  <li><a href="/running.html#debian"><img src="/images/site/os-debian.svg" alt="Debian GNU/Linux"></a></li>
-  <li><a href="/running.html#ubuntu"><img src="/images/site/os-ubuntu.svg" alt="Ubuntu"></a></li>
-  <li><a href="/running.html#clearlinux"><img src="/images/site/os-clearlinux.svg" alt="Clear Linux"></a></li>
-  <li><a href="/running.html#archlinux"><img src="/images/site/os-archlinux.svg" alt="Arch Linux"></a></li>
-  <li><a href="/running.html#tumbleweed"><img src="/images/site/os-tumbleweed.svg" alt="openSUSE Tumbleweed"></a></li>
-</ul>
 
 Compilation of SLiM from source
 ----------------------------------
