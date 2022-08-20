@@ -20,4 +20,8 @@
       <image>https://github.com/bryce-carson/SLiM/blob/a2d5c944763c8c620ac7977703eb0c15c654d681/Screenshot%20from%202022-08-19%2021-26-59.png</image>
     </screenshot>
   </screenshots>
+  
+  <!-- LINKS to display in "Software Center" applications-->
+  <url type="bugtracker">https://github.com/MesserLab/SLiM/issues</url>
+  <url type="homepage">https://messerlab.org/slim/</url>
 </component>
