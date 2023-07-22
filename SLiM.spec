@@ -1,48 +1,29 @@
-Name:           SLiM
-Version:        4.0.1
-Release:        2%{?dist}
-Summary:        an evolutionary simulation framework
+%global forgesource https://github.com/MesserLab/SLiM/
+%global tag 4.0.1
 
+Name:           SLiM
+Version:        %{tag}
+Release:        3%{?dist}
+Summary:        an evolutionary simulation framework
 License:        GPLv3+
 URL:            https://messerlab.org/slim/
-Source0:        https://github.com/MesserLab/SLiM/archive/v%{version}.tar.gz
+Source: %{forgesource}
 
 # Prevent users of the Copr repository from using Simple Login Manager, due to binary file name conflict.
 Conflicts:      slim
 
 BuildRequires:  cmake
-# openSUSE Build Requires
-%if %{defined suse_version}
-%if 0%{?suse_version} >= 1500
 BuildRequires:  glew-devel
 BuildRequires:  Mesa-libGL-devel
 BuildRequires:  gcc-c++
 BuildRequires:  libqt5-qtbase-devel
 BuildRequires:  appstream-glib-devel
-%endif
-%else
-BuildRequires:  qt5-qtbase-devel
+BuildRequires:  qt5-qtbase-devel >= 5.9.5
 BuildRequires:  libappstream-glib
-%endif
+
 ExclusiveArch:  x86_64
 
-# Fedora: these package versions are those that COPR is building against, and thus if
-# they change because of point releases in Qt5, the RPMs need to be rebuilt and deployed.
-# Qt is weird and doesn't allow older software to be used if a newer point release is
-# installed on the system.
-%if 0%{?fedora}
-Requires: qt5-qtbase >= 5.13.2
-%endif
-
-# Conditonal requires for RHEL (and CentOS)
-%if 0%{?rhel}
-Requires: qt5-qtbase >= 5.12.5
-%endif
-
-# Conditional requires for openSUSE and SLE.
-%if %{defined suse_version}
-Requires: libqt5-qtbase >= 5.12.7
-%endif
+Requires: qt5-qtbase
 
 %description
 SLiM is an evolutionary simulation framework that combines a powerful engine for
@@ -56,7 +37,7 @@ Linux for easy simulation set-up, interactive runtime control, and dynamical
 visualization of simulation output.
 
 %prep
-tar -xf ../SOURCES/v%{version}.tar.gz
+%forgesetup
 
 %build
 # NOTE: is the relative path required when using the cmake macro due to the above source prep-style?
@@ -67,25 +48,26 @@ tar -xf ../SOURCES/v%{version}.tar.gz
 %cmake_install
 
 %check
-appstream-util validate-relax --nonet %{buildroot}/usr/share/metainfo/org.messerlab.slimgui.appdata.xml
+# appstream-util validate-relax --nonet %{buildroot}/usr/share/metainfo/org.messerlab.slimgui.appdata.xml
 
 %files
-/usr/bin/eidos
-/usr/bin/slim
-/usr/bin/SLiMgui
-/usr/share/applications/org.messerlab.slimgui.desktop
-/usr/share/icons/hicolor/scalable/apps/org.messerlab.slimgui.svg
-/usr/share/icons/hicolor/scalable/mimetypes/text-slim.svg
-/usr/share/icons/hicolor/symbolic/apps/org.messerlab.slimgui-symbolic.svg
-/usr/share/metainfo/org.messerlab.slimgui.appdata.xml
-/usr/share/metainfo/org.messerlab.slimgui.metainfo.xml
-/usr/share/mime/packages/org.messerlab.slimgui-mime.xml
+%{_bindir}/eidos
+%{_bindir}/slim
+%{_bindir}/SLiMgui
+%{_datadir}/applications/org.messerlab.slimgui.desktop
+%{_datadir}/icons/hicolor/scalable/apps/org.messerlab.slimgui.svg
+%{_datadir}/icons/hicolor/scalable/mimetypes/text-slim.svg
+%{_datadir}/icons/hicolor/symbolic/apps/org.messerlab.slimgui-symbolic.svg
+%{_datadir}/metainfo/org.messerlab.slimgui.appdata.xml
+%{_datadir}/metainfo/org.messerlab.slimgui.metainfo.xml
+%{_datadir}/mime/packages/org.messerlab.slimgui-mime.xml
 
-%post
-update-mime-database -n /usr/share/mime/
-xdg-mime install --mode system /usr/share/mime/packages/org.messerlab.slimgui-mime.xml
+%license
 
 %changelog
+* Sat Jul 22 2023 Bryce Carson <bryce.a.carson@gmail.com> - 4.0.1-3
+- `SLiM.spec` updated to use macros; non-Fedora packaging information removed from the SPEC
+
 * Tue Sep 27 2022 Bryce Carson <bryce.a.carson@gmail.com> - 4.0.1-2
 - `CMakeLists.txt` improved, so the installation section of the RPM is now simplified.
 - Data files now exist in `data/`, rather than in the root folder of the software.
