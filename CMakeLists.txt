@@ -7,23 +7,23 @@
 #
 # This will make a Release build, with optimization and without debugging symbols, by default.
 # The built executables will be placed in the build directory upon successful completion. The optional
-# -j argument specifies the number of threads to use for the build, which should be a value related 
+# -j argument specifies the number of threads to use for the build, which should be a value related
 # to the number of cores available on your machine (typically less than or equal to the number of cores).
-# 
+#
 # You can also explicitly make a Release build; this is typically done in a directory named "Release"
 # instead of "build":
 #
 #   mkdir Release
 #   cd Release
 #   cmake -D CMAKE_BUILD_TYPE=Release ../SLiM
-#   make 
+#   make
 #
 # Or you can make a Debug build (without optimization, with debugging symbols):
 #
 #   mkdir Debug
 #   cd Debug
 #   cmake -D CMAKE_BUILD_TYPE=Debug ../SLiM
-#   make 
+#   make
 #
 # To build the Qt5-based GUI, make sure you have the Qt5 Widgets, Core, and Gui libraries installed,
 # then configure with:
@@ -48,7 +48,6 @@
 # Then you can just do "make"; cmake will automatically be re-run by make since the CMakeLists.txt
 # file has changed.
 
-
 cmake_minimum_required (VERSION 2.8.12 FATAL_ERROR)
 
 project(SLiM)
@@ -62,7 +61,7 @@ endif()
 #
 
 # Make a Release build by default
-if(NOT CMAKE_BUILD_TYPE) 
+if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif(NOT CMAKE_BUILD_TYPE)
 
@@ -111,8 +110,8 @@ endif()
 if(WIN32)
     set(CMAKE_CXX_STANDARD_LIBRARIES "-static-libgcc -static-libstdc++ -lwsock32 -lws2_32 ${CMAKE_CXX_STANDARD_LIBRARIES}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
-    set(GNULIB_NAMESPACE_SOURCES "${PROJECT_SOURCE_DIR}/core/chromosome.cpp" 
-        "${PROJECT_SOURCE_DIR}/core/genome.cpp" 
+    set(GNULIB_NAMESPACE_SOURCES "${PROJECT_SOURCE_DIR}/core/chromosome.cpp"
+        "${PROJECT_SOURCE_DIR}/core/genome.cpp"
         "${PROJECT_SOURCE_DIR}/core/population.cpp"
         "${PROJECT_SOURCE_DIR}/core/slim_globals.cpp"
         "${PROJECT_SOURCE_DIR}/core/slim_sim_eidos.cpp"
