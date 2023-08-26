@@ -28,6 +28,7 @@
 
 
 #include <stdio.h>
+#include <cstdint>
 
 #include "eidos_globals.h"
 #include "eidos_value.h"
@@ -494,7 +495,7 @@ void AccumulateMemoryUsageIntoTotal_Community(SLiMMemoryUsage_Community &p_usage
 #define DO_MEMORY_CHECKS	1
 #endif
 
-// If 1, and SLiM_verbose_output == true, additional output will be generated regarding the mutation run count
+// If 1, and SLiM_verbosity_level >= 2, additional output will be generated regarding the mutation run count
 // experiments performed by Species.
 #define MUTRUN_EXPERIMENT_OUTPUT	0
 
@@ -1443,7 +1444,10 @@ static_assert((int)gID_LastSLiMEntry <= (int)gEidosID_LastContextEntry, "the Con
 #pragma mark Profiling
 #pragma mark -
 
+#if (SLIMPROFILING == 1)
 void WriteProfileResults(std::string profile_output_path, std::string model_name, Community *community);
+#endif
+
 
 #endif /* defined(__SLiM__slim_globals__) */
 

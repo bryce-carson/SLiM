@@ -26,6 +26,7 @@
 #include "species.h"
 #include "polymorphism.h"
 #include "subpopulation.h"
+#include "eidos_sorting.h"
 
 #include <algorithm>
 #include <string>
@@ -640,7 +641,8 @@ EidosValue_SP Genome::ExecuteMethod_Accelerated_containsMarkerMutation(EidosObje
 			EidosValue_Logical *result_logical_vec = (new (gEidosValuePool->AllocateChunk()) EidosValue_Logical())->resize_no_initialize(p_elements_size);
 			bool null_genome_seen = false;
 			
-#pragma omp parallel for schedule(dynamic, 16) default(none) shared(p_elements_size) firstprivate(p_elements, mutation_type_ptr, marker_position, last_position, result_logical_vec) reduction(||: null_genome_seen) if(p_elements_size >= EIDOS_OMPMIN_CONTAINS_MARKER_MUT)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_CONTAINS_MARKER_MUT);
+#pragma omp parallel for schedule(dynamic, 16) default(none) shared(p_elements_size) firstprivate(p_elements, mutation_type_ptr, marker_position, last_position, result_logical_vec) reduction(||: null_genome_seen) if(p_elements_size >= EIDOS_OMPMIN_CONTAINS_MARKER_MUT) num_threads(thread_count)
 			for (size_t element_index = 0; element_index < p_elements_size; ++element_index)
 			{
 				Genome *element = (Genome *)(p_elements[element_index]);
@@ -818,7 +820,8 @@ EidosValue_SP Genome::ExecuteMethod_Accelerated_countOfMutationsOfType(EidosObje
 	EidosValue_Int_vector *integer_result = (new (gEidosValuePool->AllocateChunk()) EidosValue_Int_vector())->resize_no_initialize(p_elements_size);
 	bool saw_error = false;
 	
-#pragma omp parallel for schedule(dynamic, 1) default(none) shared(p_elements_size) firstprivate(p_elements, mut_block_ptr, mutation_type_ptr, integer_result, mutrun_count) reduction(||: saw_error) if(p_elements_size >= EIDOS_OMPMIN_G_COUNT_OF_MUTS_OF_TYPE)
+	EIDOS_THREAD_COUNT(gEidos_OMP_threads_G_COUNT_OF_MUTS_OF_TYPE);
+#pragma omp parallel for schedule(dynamic, 1) default(none) shared(p_elements_size) firstprivate(p_elements, mut_block_ptr, mutation_type_ptr, integer_result, mutrun_count) reduction(||: saw_error) if(p_elements_size >= EIDOS_OMPMIN_G_COUNT_OF_MUTS_OF_TYPE) num_threads(thread_count)
 	for (size_t element_index = 0; element_index < p_elements_size; ++element_index)
 	{
 		Genome *element = (Genome *)(p_elements[element_index]);
@@ -3769,7 +3772,7 @@ EidosValue_SP Genome_Class::ExecuteMethod_readFromVCF(EidosGlobalStringID p_meth
 			{
 				Genome *genome = targets[genome_index];
 				slim_mutrun_index_t &genome_last_mutrun_modified = target_last_mutrun_modified[genome_index];
-				MutationRun *(&genome_last_mutrun) = target_last_mutrun[genome_index];
+				MutationRun *&genome_last_mutrun = target_last_mutrun[genome_index];
 				slim_position_t mutrun_length = genome->mutrun_length_;
 				MutationIndex mut_index = alt_allele_mut_indices[call - 1];
 				slim_mutrun_index_t mut_mutrun_index = (slim_mutrun_index_t)(mut_position / mutrun_length);

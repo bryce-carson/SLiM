@@ -1546,7 +1546,9 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 		{
 			if (Individual::s_any_individual_fitness_scaling_set_)
 			{
-#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(subpop_fitness_scaling) reduction(+: totalFemaleFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_F_1)
+				EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_SEX_1);
+				EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_SEX_1);
+#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(subpop_fitness_scaling) reduction(+: totalFemaleFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_1) num_threads(thread_count)
 				for (slim_popsize_t female_index = 0; female_index < parent_first_male_index_; female_index++)
 				{
 					double fitness = parent_individuals_[female_index]->fitness_scaling_;
@@ -1559,6 +1561,7 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 					parent_individuals_[female_index]->cached_fitness_UNSAFE_ = fitness;
 					totalFemaleFitness += fitness;
 				}
+				EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_SEX_1);
 			}
 			else
 			{
@@ -1578,9 +1581,14 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 				}
 				else
 				{
-#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(fitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_F_2)
+					EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_SEX_2);
+					EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_SEX_2);
+#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(fitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_2) num_threads(thread_count)
 					for (slim_popsize_t female_index = 0; female_index < parent_first_male_index_; female_index++)
+					{
 						parent_individuals_[female_index]->cached_fitness_UNSAFE_ = fitness;
+					}
+					EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_SEX_2);
 				}
 				
 				totalFemaleFitness = fitness * parent_first_male_index_;
@@ -1648,7 +1656,9 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 					FixNonNeutralCaches_OMP();
 #endif
 					
-#pragma omp parallel for schedule(dynamic, 16) default(none) shared(parent_first_male_index_, subpop_fitness_scaling) reduction(+: totalFemaleFitness) // FIXME needs if()
+					EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_SEX_3);
+					EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_SEX_3);
+#pragma omp parallel for schedule(dynamic, 16) default(none) shared(parent_first_male_index_, subpop_fitness_scaling) reduction(+: totalFemaleFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_3) num_threads(thread_count)
 					for (slim_popsize_t female_index = 0; female_index < parent_first_male_index_; female_index++)
 					{
 						double fitness = parent_individuals_[female_index]->fitness_scaling_;
@@ -1673,6 +1683,7 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 						parent_individuals_[female_index]->cached_fitness_UNSAFE_ = fitness;
 						totalFemaleFitness += fitness;
 					}
+					EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_SEX_3);
 				}
 				else	// at least one mutationEffect() or fitnessEffect() callback; not parallelized
 				{
@@ -1764,7 +1775,9 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 		{
 			if (Individual::s_any_individual_fitness_scaling_set_)
 			{
-#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(subpop_fitness_scaling) reduction(+: totalMaleFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_M_1)
+				EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_SEX_1);
+				EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_SEX_1);
+#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(subpop_fitness_scaling) reduction(+: totalMaleFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_1) num_threads(thread_count)
 				for (slim_popsize_t male_index = parent_first_male_index_; male_index < parent_subpop_size_; male_index++)
 				{
 					double fitness = parent_individuals_[male_index]->fitness_scaling_;
@@ -1777,6 +1790,7 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 					parent_individuals_[male_index]->cached_fitness_UNSAFE_ = fitness;
 					totalMaleFitness += fitness;
 				}
+				EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_SEX_1);
 			}
 			else
 			{
@@ -1796,9 +1810,14 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 				}
 				else
 				{
-#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(fitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_M_2)
+					EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_SEX_2);
+					EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_SEX_2);
+#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(fitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_2) num_threads(thread_count)
 					for (slim_popsize_t male_index = parent_first_male_index_; male_index < parent_subpop_size_; male_index++)
+					{
 						parent_individuals_[male_index]->cached_fitness_UNSAFE_ = fitness;
+					}
+					EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_SEX_2);
 				}
 				
 				if (parent_subpop_size_ > parent_first_male_index_)
@@ -1860,7 +1879,9 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 				{
 					// a separate loop for parallelization of the no-callback case
 					// note that we rely on the fixup of non-neutral caches done above
-#pragma omp parallel for schedule(dynamic, 16) default(none) shared(parent_first_male_index_, parent_subpop_size_, subpop_fitness_scaling) reduction(+: totalMaleFitness) // FIXME needs if()
+					EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_SEX_3);
+					EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_SEX_3);
+#pragma omp parallel for schedule(dynamic, 16) default(none) shared(parent_first_male_index_, parent_subpop_size_, subpop_fitness_scaling) reduction(+: totalMaleFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_SEX_3) num_threads(thread_count)
 					for (slim_popsize_t male_index = parent_first_male_index_; male_index < parent_subpop_size_; male_index++)
 					{
 						double fitness = parent_individuals_[male_index]->fitness_scaling_;
@@ -1885,6 +1906,7 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 						parent_individuals_[male_index]->cached_fitness_UNSAFE_ = fitness;
 						totalMaleFitness += fitness;
 					}
+					EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_SEX_3);
 				}
 				else	// at least one mutationEffect() or fitnessEffect() callback; not parallelized
 				{
@@ -1984,7 +2006,9 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 		{
 			if (Individual::s_any_individual_fitness_scaling_set_)
 			{
-#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(subpop_fitness_scaling) reduction(+: totalFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_ASEX_1)
+				EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_ASEX_1);
+				EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_ASEX_1);
+#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(subpop_fitness_scaling) reduction(+: totalFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_ASEX_1) num_threads(thread_count)
 				for (slim_popsize_t individual_index = 0; individual_index < parent_subpop_size_; individual_index++)
 				{
 					double fitness = parent_individuals_[individual_index]->fitness_scaling_;
@@ -1997,6 +2021,7 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 					parent_individuals_[individual_index]->cached_fitness_UNSAFE_ = fitness;
 					totalFitness += fitness;
 				}
+				EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_ASEX_1);
 			}
 			else
 			{
@@ -2016,9 +2041,14 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 				}
 				else
 				{
-#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(fitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_ASEX_2)
+					EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_ASEX_2);
+					EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_ASEX_2);
+#pragma omp parallel for schedule(static) default(none) shared(parent_subpop_size_) firstprivate(fitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_ASEX_2) num_threads(thread_count)
 					for (slim_popsize_t individual_index = 0; individual_index < parent_subpop_size_; individual_index++)
+					{
 						parent_individuals_[individual_index]->cached_fitness_UNSAFE_ = fitness;
+					}
+					EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_ASEX_2);
 				}
 				
 				totalFitness = fitness * parent_subpop_size_;
@@ -2088,7 +2118,9 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 					FixNonNeutralCaches_OMP();
 #endif
 					
-#pragma omp parallel for schedule(dynamic, 16) default(none) shared(parent_subpop_size_, subpop_fitness_scaling) reduction(+: totalFitness) // FIXME needs if()
+					EIDOS_BENCHMARK_START(EidosBenchmarkType::k_FITNESS_ASEX_3);
+					EIDOS_THREAD_COUNT(gEidos_OMP_threads_FITNESS_ASEX_3);
+#pragma omp parallel for schedule(dynamic, 16) default(none) shared(parent_subpop_size_, subpop_fitness_scaling) reduction(+: totalFitness) if(parent_subpop_size_ >= EIDOS_OMPMIN_FITNESS_ASEX_3) num_threads(thread_count)
 					for (slim_popsize_t individual_index = 0; individual_index < parent_subpop_size_; individual_index++)
 					{
 						double fitness = parent_individuals_[individual_index]->fitness_scaling_;
@@ -2113,6 +2145,7 @@ void Subpopulation::UpdateFitness(std::vector<SLiMEidosBlock*> &p_mutationEffect
 						parent_individuals_[individual_index]->cached_fitness_UNSAFE_ = fitness;
 						totalFitness += fitness;
 					}
+					EIDOS_BENCHMARK_END(EidosBenchmarkType::k_FITNESS_ASEX_3);
 				}
 				else	// at least one mutationEffect() or fitnessEffect() callback; not parallelized
 				{
@@ -3893,7 +3926,9 @@ void Subpopulation::ViabilitySurvival(std::vector<SLiMEidosBlock*> &p_survival_c
 	if (no_callbacks)
 	{
 		// this is the simple case with no callbacks and thus no shuffle buffer
-#pragma omp parallel default(none) shared(gEidos_RNG_PERTHREAD, survival_buffer, parent_subpop_size_) firstprivate(individual_data) if(parent_subpop_size_ >= EIDOS_OMPMIN_SURVIVAL)
+		EIDOS_BENCHMARK_START(EidosBenchmarkType::k_SURVIVAL);
+		EIDOS_THREAD_COUNT(gEidos_OMP_threads_SURVIVAL);
+#pragma omp parallel default(none) shared(gEidos_RNG_PERTHREAD, survival_buffer, parent_subpop_size_) firstprivate(individual_data) if(parent_subpop_size_ >= EIDOS_OMPMIN_SURVIVAL) num_threads(thread_count)
 		{
 			uint8_t *survival_buf_perthread = survival_buffer;
 			gsl_rng *rng = EIDOS_GSL_RNG(omp_get_thread_num());
@@ -3912,6 +3947,7 @@ void Subpopulation::ViabilitySurvival(std::vector<SLiMEidosBlock*> &p_survival_c
 				survival_buf_perthread[individual_index] = survived;
 			}
 		}
+		EIDOS_BENCHMARK_END(EidosBenchmarkType::k_SURVIVAL);
 	}
 	else
 	{
@@ -4022,9 +4058,14 @@ void Subpopulation::IncrementIndividualAges(void)
 	std::vector<Individual *> &parents = parent_individuals_;
 	size_t parent_count = parents.size();
 	
-#pragma omp parallel for schedule(static) default(none) shared(parent_count) firstprivate(parents) if(parent_count >= EIDOS_OMPMIN_AGEINC)
+	EIDOS_BENCHMARK_START(EidosBenchmarkType::k_AGE_INCR);
+	EIDOS_THREAD_COUNT(gEidos_OMP_threads_AGE_INCR);
+#pragma omp parallel for schedule(static) default(none) shared(parent_count) firstprivate(parents) if(parent_count >= EIDOS_OMPMIN_AGE_INCR) num_threads(thread_count)
 	for (size_t parent_index = 0; parent_index < parent_count; ++parent_index)
+	{
 		(parents[parent_index]->age_)++;
+	}
+	EIDOS_BENCHMARK_END(EidosBenchmarkType::k_AGE_INCR);
 }
 
 size_t Subpopulation::MemoryUsageForParentTables(void)
@@ -6000,7 +6041,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointInBounds(EidosGlobalStringID p_m
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, logical_result_data, bx0, bx1) if(point_count >= EIDOS_OMPMIN_POINT_IN_BOUNDS)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_IN_BOUNDS_1D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, logical_result_data, bx0, bx1) if(point_count >= EIDOS_OMPMIN_POINT_IN_BOUNDS_1D) num_threads(thread_count)
 			for (int point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index];
@@ -6014,7 +6056,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointInBounds(EidosGlobalStringID p_m
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_, by0 = bounds_y0_, by1 = bounds_y1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, logical_result_data, bx0, bx1, by0, by1) if(point_count >= EIDOS_OMPMIN_POINT_IN_BOUNDS)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_IN_BOUNDS_2D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, logical_result_data, bx0, bx1, by0, by1) if(point_count >= EIDOS_OMPMIN_POINT_IN_BOUNDS_2D) num_threads(thread_count)
 			for (int point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 2];
@@ -6029,7 +6072,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointInBounds(EidosGlobalStringID p_m
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_, by0 = bounds_y0_, by1 = bounds_y1_, bz0 = bounds_z0_, bz1 = bounds_z1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, logical_result_data, bx0, bx1, by0, by1, bz0, bz1) if(point_count >= EIDOS_OMPMIN_POINT_IN_BOUNDS)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_IN_BOUNDS_3D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, logical_result_data, bx0, bx1, by0, by1, bz0, bz1) if(point_count >= EIDOS_OMPMIN_POINT_IN_BOUNDS_3D) num_threads(thread_count)
 			for (int point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 3];
@@ -6095,7 +6139,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointReflected(EidosGlobalStringID p_
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1) if(point_count >= EIDOS_OMPMIN_POINT_REFLECTED)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_REFLECTED_1D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1) if(point_count >= EIDOS_OMPMIN_POINT_REFLECTED_1D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index];
@@ -6113,7 +6158,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointReflected(EidosGlobalStringID p_
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_, by0 = bounds_y0_, by1 = bounds_y1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1) if(point_count >= EIDOS_OMPMIN_POINT_REFLECTED)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_REFLECTED_2D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1) if(point_count >= EIDOS_OMPMIN_POINT_REFLECTED_2D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 2];
@@ -6140,7 +6186,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointReflected(EidosGlobalStringID p_
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_, by0 = bounds_y0_, by1 = bounds_y1_, bz0 = bounds_z0_, bz1 = bounds_z1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1, bz0, bz1) if(point_count >= EIDOS_OMPMIN_POINT_REFLECTED)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_REFLECTED_3D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1, bz0, bz1) if(point_count >= EIDOS_OMPMIN_POINT_REFLECTED_3D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 3];
@@ -6219,7 +6266,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointStopped(EidosGlobalStringID p_me
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1) if(point_count >= EIDOS_OMPMIN_POINT_STOPPED)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_STOPPED_1D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1) if(point_count >= EIDOS_OMPMIN_POINT_STOPPED_1D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index];
@@ -6231,7 +6279,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointStopped(EidosGlobalStringID p_me
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_, by0 = bounds_y0_, by1 = bounds_y1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1) if(point_count >= EIDOS_OMPMIN_POINT_STOPPED)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_STOPPED_2D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1) if(point_count >= EIDOS_OMPMIN_POINT_STOPPED_2D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 2];
@@ -6246,7 +6295,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointStopped(EidosGlobalStringID p_me
 		{
 			double bx0 = bounds_x0_, bx1 = bounds_x1_, by0 = bounds_y0_, by1 = bounds_y1_, bz0 = bounds_z0_, bz1 = bounds_z1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1, bz0, bz1) if(point_count >= EIDOS_OMPMIN_POINT_STOPPED)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_STOPPED_3D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx0, bx1, by0, by1, bz0, bz1) if(point_count >= EIDOS_OMPMIN_POINT_STOPPED_3D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 3];
@@ -6326,7 +6376,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointPeriodic(EidosGlobalStringID p_m
 		{
 			double bx1 = bounds_x1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx1, periodic_x) if(point_count >= EIDOS_OMPMIN_POINT_PERIODIC)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_PERIODIC_1D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx1, periodic_x) if(point_count >= EIDOS_OMPMIN_POINT_PERIODIC_1D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index];
@@ -6343,7 +6394,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointPeriodic(EidosGlobalStringID p_m
 		{
 			double bx1 = bounds_x1_, by1 = bounds_y1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx1, by1, periodic_x, periodic_y) if(point_count >= EIDOS_OMPMIN_POINT_PERIODIC)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_PERIODIC_2D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx1, by1, periodic_x, periodic_y) if(point_count >= EIDOS_OMPMIN_POINT_PERIODIC_2D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 2];
@@ -6368,7 +6420,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointPeriodic(EidosGlobalStringID p_m
 		{
 			double bx1 = bounds_x1_, by1 = bounds_y1_, bz1 = bounds_z1_;
 			
-#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx1, by1, bz1, periodic_x, periodic_y, periodic_z) if(point_count >= EIDOS_OMPMIN_POINT_PERIODIC)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_PERIODIC_3D);
+#pragma omp parallel for schedule(static) default(none) shared(point_count) firstprivate(point_buf, float_result_data, bx1, by1, bz1, periodic_x, periodic_y, periodic_z) if(point_count >= EIDOS_OMPMIN_POINT_PERIODIC_3D) num_threads(thread_count)
 			for (int64_t point_index = 0; point_index < point_count; ++point_index)
 			{
 				double x = point_buf[point_index * 3];
@@ -6432,7 +6485,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointUniform(EidosGlobalStringID p_me
 	{
 		case 1:
 		{
-#pragma omp parallel default(none) shared(point_count, gEidos_RNG_PERTHREAD) firstprivate(float_result_data) if(point_count >= EIDOS_OMPMIN_POINT_UNIFORM)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_UNIFORM_1D);
+#pragma omp parallel default(none) shared(point_count, gEidos_RNG_PERTHREAD) firstprivate(float_result_data) if(point_count >= EIDOS_OMPMIN_POINT_UNIFORM_1D) num_threads(thread_count)
 			{
 				gsl_rng *rng = EIDOS_GSL_RNG(omp_get_thread_num());
 				double xsize = bounds_x1_ - bounds_x0_, xbase = bounds_x0_;
@@ -6447,7 +6501,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointUniform(EidosGlobalStringID p_me
 		}
 		case 2:
 		{
-#pragma omp parallel default(none) shared(point_count, gEidos_RNG_PERTHREAD) firstprivate(float_result_data) if(point_count >= EIDOS_OMPMIN_POINT_UNIFORM)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_UNIFORM_2D);
+#pragma omp parallel default(none) shared(point_count, gEidos_RNG_PERTHREAD) firstprivate(float_result_data) if(point_count >= EIDOS_OMPMIN_POINT_UNIFORM_2D) num_threads(thread_count)
 			{
 				gsl_rng *rng = EIDOS_GSL_RNG(omp_get_thread_num());
 				double xsize = bounds_x1_ - bounds_x0_, xbase = bounds_x0_;
@@ -6464,7 +6519,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_pointUniform(EidosGlobalStringID p_me
 		}
 		case 3:
 		{
-#pragma omp parallel default(none) shared(point_count, gEidos_RNG_PERTHREAD) firstprivate(float_result_data) if(point_count >= EIDOS_OMPMIN_POINT_UNIFORM)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_POINT_UNIFORM_3D);
+#pragma omp parallel default(none) shared(point_count, gEidos_RNG_PERTHREAD) firstprivate(float_result_data) if(point_count >= EIDOS_OMPMIN_POINT_UNIFORM_3D) num_threads(thread_count)
 			{
 				gsl_rng *rng = EIDOS_GSL_RNG(omp_get_thread_num());
 				double xsize = bounds_x1_ - bounds_x0_, xbase = bounds_x0_;
@@ -6901,7 +6957,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_sampleIndividuals(EidosGlobalStringID
 			EidosValue_Object_vector *result = ((EidosValue_Object_vector *)result_SP.get())->resize_no_initialize(sample_size);
 			EidosObject **object_result_data = result->data();
 			
-#pragma omp parallel default(none) shared(gEidos_RNG_PERTHREAD, sample_size) firstprivate(candidate_count, first_candidate_index, excluded_index, object_result_data) if(sample_size >= EIDOS_OMPMIN_SAMPLE_INDIVIDUALS_1)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_SAMPLE_INDIVIDUALS_1);
+#pragma omp parallel default(none) shared(gEidos_RNG_PERTHREAD, sample_size) firstprivate(candidate_count, first_candidate_index, excluded_index, object_result_data) if(sample_size >= EIDOS_OMPMIN_SAMPLE_INDIVIDUALS_1) num_threads(thread_count)
 			{
 				gsl_rng *rng = EIDOS_GSL_RNG(omp_get_thread_num());
 				
@@ -7065,7 +7122,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_sampleIndividuals(EidosGlobalStringID
 		if (replace)
 		{
 			// base case with replacement
-#pragma omp parallel default(none) shared(gEidos_RNG_PERTHREAD, sample_size, index_buffer) firstprivate(candidate_count, object_result_data) if(sample_size >= EIDOS_OMPMIN_SAMPLE_INDIVIDUALS_2)
+			EIDOS_THREAD_COUNT(gEidos_OMP_threads_SAMPLE_INDIVIDUALS_2);
+#pragma omp parallel default(none) shared(gEidos_RNG_PERTHREAD, sample_size, index_buffer) firstprivate(candidate_count, object_result_data) if(sample_size >= EIDOS_OMPMIN_SAMPLE_INDIVIDUALS_2) num_threads(thread_count)
 			{
 				gsl_rng *rng = EIDOS_GSL_RNG(omp_get_thread_num());
 				
@@ -7689,7 +7747,8 @@ EidosValue_SP Subpopulation::ExecuteMethod_spatialMapValue(EidosGlobalStringID p
 		if (spatiality_type == 0)
 			EIDOS_TERMINATION << "ERROR (Subpopulation::ExecuteMethod_spatialMapValue): (internal error) unrecognized spatiality." << EidosTerminate();
 		
-#pragma omp parallel for schedule(static) default(none) shared(x_count, float_singleton_result) firstprivate(map, map_spatiality, spatiality_type, point, float_result) if(x_count >= EIDOS_OMPMIN_SPATIAL_MAP_VALUE)
+		EIDOS_THREAD_COUNT(gEidos_OMP_threads_SPATIAL_MAP_VALUE);
+#pragma omp parallel for schedule(static) default(none) shared(x_count, float_singleton_result) firstprivate(map, map_spatiality, spatiality_type, point, float_result) if(x_count >= EIDOS_OMPMIN_SPATIAL_MAP_VALUE) num_threads(thread_count)
 		for (int value_index = 0; value_index < x_count; ++value_index)
 		{
 			// We need to use the correct spatial bounds for each coordinate, which depends upon our exact spatiality
