@@ -49,6 +49,7 @@
 # file has changed.
 
 cmake_minimum_required (VERSION 2.8.12 FATAL_ERROR)
+include(GNUInstallDirs)
 
 project(SLiM)
 if(WIN32)
@@ -327,8 +328,7 @@ else()
 	    target_link_libraries( ${TARGET_NAME} PUBLIC Qt5::Widgets Qt5::Core Qt5::Gui OpenGL::GL gsl tables eidos_zlib )
 
         # Linux distribution stuff
-        include(GNUInstallDirs)
-	install(DIRECTORY data/ DESTINATION DATADIR)
+	install(DIRECTORY data/ DESTINATION ${DATADIR})
     endif()
 endif()
 install(TARGETS ${TARGET_NAME} DESTINATION bin)
