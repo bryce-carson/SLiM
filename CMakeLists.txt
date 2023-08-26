@@ -326,7 +326,9 @@ else()
     else()
 	    target_link_libraries( ${TARGET_NAME} PUBLIC Qt5::Widgets Qt5::Core Qt5::Gui OpenGL::GL gsl tables eidos_zlib )
 
-	    install(DIRECTORY data/ DESTINATION share)
+        # Linux distribution stuff
+        include(GNUInstallDirs)
+	install(DIRECTORY data/ DESTINATION DATADIR)
     endif()
 endif()
 install(TARGETS ${TARGET_NAME} DESTINATION bin)
