@@ -328,7 +328,7 @@ else()
 	    target_link_libraries( ${TARGET_NAME} PUBLIC Qt5::Widgets Qt5::Core Qt5::Gui OpenGL::GL gsl tables eidos_zlib )
 
         # Linux distribution stuff
-	install(DIRECTORY data/ DESTINATION ${DATADIR})
+	install(DIRECTORY data/ DESTINATION ${CMAKE_INSTALL_DATADIR})
     endif()
 endif()
 install(TARGETS ${TARGET_NAME} DESTINATION bin)
