@@ -1,4 +1,4 @@
-?# Cross-distribution SLiM RPM spec.
+# Cross-distribution SLiM RPM spec.
 %if %{defined suse_version}
 %if 0%{?suse_version} < 1600
 %global qtNameAndVersion libqt5
